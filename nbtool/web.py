@@ -199,7 +199,10 @@ class Handler(BaseHTTPRequestHandler):
             user, _, password = raw.partition(":")
         except Exception:
             return False
-        return hmac.compare_digest(user, app.auth_user) and hmac.compare_digest(password, app.password)
+        # compare_digest 对非 ASCII 的 str 会抛 TypeError，密码可能是中文，所以比 bytes
+        return hmac.compare_digest(user.encode("utf-8"), app.auth_user.encode("utf-8")) and hmac.compare_digest(
+            password.encode("utf-8"), app.password.encode("utf-8")
+        )
 
     def _send(self, status: int, body: bytes, ctype: str = "application/json; charset=utf-8", extra=None):
         self.send_response(status)
@@ -249,7 +252,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/healthz":  # 健康检查不需要认证
             return self._json({"ok": True})
-        if not self._authorized():
+        try:
+            authorized = self._authorized()
+        except Exception:  # 认证环节自身出错也只能当成未认证，不能把连接直接掐掉
+            authorized = False
+        if not authorized:
             self._send(
                 401,
                 '{"error":"需要认证"}'.encode("utf-8"),

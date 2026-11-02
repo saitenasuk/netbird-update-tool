@@ -8,7 +8,7 @@ services:
     environment:
       NB_BIND: "0.0.0.0"          # 改成局域网 IP 或 100.x 可以缩小暴露面
       NB_PORT: "8770"
-      NB_COM_PASSWORD: "${NB_COM_PASSWORD:?请先设置 NB_COM_PASSWORD}"
+      NB_COM_PASSWORD: "换成你的密码"   # ← 改这里
       TZ: "Asia/Shanghai"
     volumes:
       - ./data:/data

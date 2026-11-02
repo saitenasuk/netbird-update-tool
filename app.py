@@ -89,6 +89,8 @@ def main() -> int:
     print(f"NetBird 更新台 · http://{bind}:{port} · 数据目录 {data_dir}")
     if not password:
         print("警告：未设置 NB_COM_PASSWORD，任何人可访问并触发更新脚本", file=sys.stderr)
+    elif password in {"换成你的密码", "CHANGE-ME"}:
+        print("警告：NB_COM_PASSWORD 还是示例里的占位值，请改成自己的密码", file=sys.stderr)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

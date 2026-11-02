@@ -225,5 +225,57 @@ class WebTest(unittest.TestCase):
         self.assertIn(status, (403, 404))
 
 
+class UnicodePasswordTest(unittest.TestCase):
+    """密码是中文也要能登录——README 的示例密码就是中文。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        data = Path(cls.tmp.name)
+        (data / "keys").mkdir()
+        (data / "jobs").mkdir()
+        store = Store(str(data / "db.sqlite3"))
+        keys = KeyStore(data / "keys")
+        fake = FakeTransport()
+        engine = Engine(fake, Settings(), sleep=lambda _s: None)
+        jobs = JobManager(store, data / "jobs")
+        cls.password = "换成你的密码"
+        app = App(store, keys, engine, jobs, fake, password=cls.password, auth_user="admin")
+        cls.server = make_server(app, "127.0.0.1", 0)
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.tmp.cleanup()
+
+    def _status(self, password):
+        url = f"http://127.0.0.1:{self.port}/api/state"
+        req = urllib.request.Request(url)
+        token = base64.b64encode(f"admin:{password}".encode("utf-8")).decode()
+        req.add_header("Authorization", f"Basic {token}")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as res:
+                return res.status
+        except urllib.error.HTTPError as exc:
+            return exc.code
+
+    def test_chinese_password_works(self):
+        self.assertEqual(self._status(self.password), 200)
+
+    def test_chinese_password_still_rejects_wrong_value(self):
+        self.assertEqual(self._status("换成你的密码2"), 401)
+
+    def test_garbage_auth_header_is_401_not_disconnect(self):
+        url = f"http://127.0.0.1:{self.port}/api/state"
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", "Basic !!!not-base64!!!")
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req, timeout=10)
+        self.assertEqual(ctx.exception.code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -12,29 +12,37 @@
 在**任意一台有 Docker 的 Linux 机器**上执行（不一定是被更新的机器）。
 
 ```bash
-# 1. 只取部署用的 compose 文件，不需要 clone 整个仓库
+# 1. 写 compose 文件
 mkdir -p ~/netbird-update-tool && cd ~/netbird-update-tool
-curl -fsSLO https://raw.githubusercontent.com/saitenasuk/netbird-update-tool/main/docker-compose.yml
+cat > docker-compose.yml <<'EOF'
+services:
+  nbtool:
+    image: ghcr.io/saitenasuk/netbird-update-tool:latest
+    container_name: netbird-update-tool
+    restart: unless-stopped
+    # 关键：复用宿主机的路由表和 netbird 接口，容器才能像宿主机一样访问 100.x 和局域网
+    network_mode: host
+    environment:
+      NB_BIND: "0.0.0.0"          # 改成局域网 IP 或 100.x 可以缩小暴露面
+      NB_PORT: "8770"
+      NB_COM_PASSWORD: "换成你的密码"   # ← 改这里
+      TZ: "Asia/Shanghai"
+    volumes:
+      - ./data:/data
+EOF
 
 # 2. 数据目录（容器以 uid 1000 运行，目录必须归它）
 mkdir -p data && sudo chown 1000:1000 data
 
-# 3. 写密码。compose 会自动读同目录的 .env，
-#    之后 ps / down / pull 都不用再 export
-cat > .env <<'EOF'
-NB_COM_PASSWORD=换成你的密码
-EOF
-chmod 600 .env
-
-# 4. 起服务
+# 3. 起服务
 docker compose up -d
 
-# 5. 看是否起来了
+# 4. 看是否起来了
 docker compose ps
 curl -s http://127.0.0.1:8770/healthz     # {"ok": true}
 ```
 
-打开 `http://<主机>:8770`，用户名 `admin`，密码就是 `.env` 里的 `NB_COM_PASSWORD`。
+打开 `http://<主机>:8770`，用户名 `admin`，密码就是 compose 里那行 `NB_COM_PASSWORD`。
 
 镜像在 GHCR 上是公开的，不需要登录。升级版本：
 
@@ -65,10 +73,6 @@ git clone https://github.com/saitenasuk/netbird-update-tool.git
 cd netbird-update-tool
 docker build -t netbird-update-tool .
 ```
-
-仓库里没有 `build:` 指令，`docker compose up` 只会拉 GHCR 上的镜像。
-
-> `network_mode: host` 是必须的：容器要复用宿主机的路由表和 netbird 接口，才能访问 100.64.0.0/10 和子网代理后面的机器。
 
 ## 第一次使用
 
