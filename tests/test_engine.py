@@ -188,6 +188,16 @@ class EngineDetachTest(unittest.TestCase):
         self.assertEqual(result["hosts"][0]["status"], "failed")
         self.assertIn("后台升级单元", result["hosts"][0]["error"])
 
+    def test_cancel_marks_aborted(self):
+        fake = FakeTransport()
+        fake.responses[("test", "-x", "/root/up.sh")] = Result(0)
+        fake.responses[("/root/up.sh",)] = Result(1, [], cancelled=True)
+        engine = Engine(fake, sleep=lambda _s: None)
+        targets = [{"host": mkhost(1, "a"), "scripts": [mkscript("/root/up.sh")]}]
+        result = engine.run(targets, lambda *a, **k: None)
+        self.assertEqual(result["hosts"][0]["status"], "failed")
+        self.assertIn("已中止", result["hosts"][0]["error"])
+
     def test_timeout_marks_failure(self):
         fake = FakeTransport()
         fake.responses[("test", "-x", "/root/up.sh")] = Result(0)
