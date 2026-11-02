@@ -1,0 +1,15 @@
+services:
+  nbtool:
+    image: ghcr.io/saitenasuk/netbird-update-tool:latest
+    build: .
+    container_name: netbird-update-tool
+    restart: unless-stopped
+    # 关键：复用宿主机的路由表和 netbird 接口，容器才能像宿主机一样访问 100.x 和局域网
+    network_mode: host
+    environment:
+      NB_BIND: "0.0.0.0"          # 改成局域网 IP 或 100.x 可以缩小暴露面
+      NB_PORT: "8770"
+      NB_COM_PASSWORD: "${NB_COM_PASSWORD:?请先设置 NB_COM_PASSWORD}"
+      TZ: "Asia/Shanghai"
+    volumes:
+      - ./data:/data

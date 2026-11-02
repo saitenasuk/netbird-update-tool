@@ -1,0 +1,44 @@
+---
+# 每台机器一条记录：
+#   ansible_host   实际 IP / 域名
+#   ansible_user   登录用户（默认用 root，脚本需要 root 权限）
+#   nb_scripts     该机器要跑的脚本，数组顺序 = 执行顺序，前一个失败立即中止
+#                  每项可以带参数，参数原样传给脚本
+#   nb_detach      该机器升级会切断自己的网络连接（子网代理/走隧道 SSH）时设为 true
+#   nb_log         配合 nb_detach，读这个日志文件确认后台升级结果
+#
+# 新增一台客户端 = 复制一段 hosts 记录，改 IP 和脚本路径。
+# 如果习惯用普通用户 + sudo，在该机器下加一行：ansible_become: true
+
+all:
+  children:
+
+    # 部署了自部署控制台 + 客户端的那台阿里云机器
+    # 数组里先控制台、后本机客户端，就是你要的更新顺序
+    # 服务名跟 update-console.sh 里 whiptail 的选项一致，可以只更新其中几个
+    netbird_console:
+      hosts:
+        aliyun-console:
+          ansible_host: 47.0.0.1
+          ansible_user: root
+          nb_scripts:
+            - /root/netbird/update-console.sh management dashboard signal relay
+            - /root/netbird/update-client.sh
+
+    # 其余 Linux 客户端，每台一个脚本（路径各不相同，各自写在自己的记录里）
+    netbird_clients:
+      hosts:
+        client-hk:
+          ansible_host: 47.0.0.2
+          ansible_user: root
+          nb_scripts:
+            - /opt/netbird/update-client.sh
+
+        # 开了子网代理的那台：脚本自己 systemd-run 甩到后台，升级过程中会断线
+        client-subnet:
+          ansible_host: 47.0.0.3
+          ansible_user: root
+          nb_detach: true
+          nb_log: /var/log/netbird-upgrade.log
+          nb_scripts:
+            - /root/netbird-upgrade.sh

@@ -1,0 +1,33 @@
+{
+  "_comment": "库为空时若存在 data/seed.json 会导入。scripts 可以是多行文本，也可以是对象数组。",
+  "hosts": [
+    {
+      "name": "aliyun-console",
+      "address": "47.0.0.1",
+      "ssh_user": "root",
+      "ssh_port": 22,
+      "key_name": "nbtool-ed25519",
+      "group_name": "console",
+      "detach": false,
+      "self_host": false,
+      "scripts": [
+        {
+          "path": "/root/netbird/update-console.sh",
+          "label": "更新控制台",
+          "options": ["management", "dashboard", "signal", "relay"]
+        },
+        { "path": "/root/netbird/update-client.sh", "label": "更新客户端" }
+      ]
+    },
+    {
+      "name": "client-subnet",
+      "address": "192.168.1.30",
+      "ssh_user": "root",
+      "key_name": "nbtool-ed25519",
+      "group_name": "clients",
+      "detach": true,
+      "detach_log": "/var/log/netbird-upgrade.log",
+      "scripts": [{ "path": "/root/netbird-upgrade.sh", "label": "更新客户端（后台执行）" }]
+    }
+  ]
+}

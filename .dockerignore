@@ -1,0 +1,7 @@
+.git
+.github
+tests
+preview
+data
+legacy-ansible
+*.md

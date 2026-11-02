@@ -1,0 +1,25 @@
+---
+# 用法（在仓库根目录执行）：
+#   ansible-playbook update.yml                     # 全量：先控制台主机，再其余客户端
+#   ansible-playbook update.yml --tags console      # 只更新控制台那台
+#   ansible-playbook update.yml --tags clients      # 只更新其余客户端
+#   ansible-playbook update.yml --limit client-hk   # 只更新某台
+#   ansible-playbook update.yml --check             # 只检查脚本是否存在/可执行，不真的执行
+#   ansible-playbook update.yml -v                  # 想看到脚本自己的输出就用 -v
+#
+# 标记了 nb_detach 的机器（升级会断自己网络的，比如开子网代理那台）会多花几分钟：
+# 等它断线重连、再等后台升级单元跑完，然后才读版本。失败会在 wait_for_connection 上暴露。
+
+- name: 更新自部署控制台与本机客户端
+  hosts: netbird_console
+  tags: [console]
+  any_errors_fatal: true   # 控制台这一步失败就直接终止，不要继续去动其他客户端
+  tasks:
+    - import_tasks: tasks/run_scripts.yml
+
+- name: 更新其余 Linux 客户端
+  hosts: netbird_clients
+  tags: [clients]
+  serial: 1          # 一台一台来，某台出问题不影响已经更新完的
+  tasks:
+    - import_tasks: tasks/run_scripts.yml

@@ -1,0 +1,93 @@
+---
+# 单个主机上的执行流程：检查脚本 → 记录版本 → 按顺序跑脚本 → 记录版本
+# 前置检查放在执行之前，是为了在动手前就把"脚本路径写错/没 chmod +x"暴露出来，
+# 而不是更新到一半才发现下一台机器上没这个文件。
+#
+# nb_scripts 的每一项可以带参数，例如：
+#   - /root/netbird/update-console.sh management dashboard signal relay
+# 第一个空格前的部分当作脚本路径检查，其余原样传给脚本。
+#
+# nb_detach: true 用于"升级会切断自己网络连接"的机器（比如开了子网代理的那台）：
+# 这类机器上的脚本自己用 systemd-run 把升级甩到后台然后立即返回，
+# 所以这里必须等它断线重连、并等后台任务真正跑完，否则读到的还是旧版本。
+
+- name: 检查脚本存在且可执行
+  ansible.builtin.stat:
+    path: "{{ item.split()[0] }}"
+  loop: "{{ nb_scripts }}"
+  register: nb_script_stat
+  changed_when: false
+
+- name: 有缺失或没有执行权限就停下
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.executable
+    fail_msg: "{{ item.item }} 不存在或不可执行（需要 chmod +x）"
+    quiet: true
+  loop: "{{ nb_script_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: 记录更新前的 netbird 版本
+  ansible.builtin.command:
+    cmd: netbird version
+  register: nb_version_before
+  changed_when: false
+  failed_when: false
+
+- name: 按顺序执行更新脚本
+  ansible.builtin.command:
+    cmd: "{{ item }}"
+  loop: "{{ nb_scripts }}"
+  loop_control:
+    label: "{{ item }}"
+  register: nb_script_run
+
+# ---- 以下三步只在 nb_detach 的机器上跑 ----
+
+- name: 等待 NetBird 断线重连
+  ansible.builtin.wait_for_connection:
+    delay: 45
+    sleep: 10
+    connect_timeout: 10
+    timeout: 900
+  when: nb_detach | default(false)
+
+- name: 等待后台升级单元结束
+  ansible.builtin.shell:
+    cmd: "systemctl list-units --all --plain --no-legend 'netbird-upgrade-*' || true"
+  register: nb_unit_poll
+  changed_when: false
+  until: nb_unit_poll.stdout | trim == ''
+  retries: 60
+  delay: 10
+  when: nb_detach | default(false)
+
+- name: 读取后台升级日志
+  ansible.builtin.command:
+    cmd: tail -n 20 {{ nb_log | default('/var/log/netbird-upgrade.log') }}
+  register: nb_log_tail
+  changed_when: false
+  failed_when: false
+  when: nb_detach | default(false)
+
+# ---- 结果 ----
+
+- name: 记录更新后的 netbird 版本
+  ansible.builtin.command:
+    cmd: netbird version
+  register: nb_version_after
+  changed_when: false
+  failed_when: false
+
+- name: 结果
+  ansible.builtin.debug:
+    msg:
+      - "执行了: {{ nb_script_run.results | map(attribute='item') | join(' → ') }}"
+      - "netbird 版本: {{ (nb_version_before.stdout | default('', true) | trim) or '未安装' }} → {{ (nb_version_after.stdout | default('', true) | trim) or '未安装' }}"
+
+- name: 后台升级日志末尾
+  ansible.builtin.debug:
+    var: nb_log_tail.stdout_lines
+  when: nb_detach | default(false)

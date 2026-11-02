@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>NetBird 更新台</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <h1>NetBird 更新台</h1>
+          <p class="brand-sub" id="brand-sub">加载中…</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="btn-check-all">体检</button>
+        <button class="btn btn-primary" id="btn-update-all">全部更新</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <div class="col-main">
+        <section class="panel" aria-labelledby="hosts-title">
+          <div class="panel-head">
+            <h2 id="hosts-title">机器</h2>
+            <span class="count" id="host-count">0</span>
+            <span class="spacer"></span>
+            <button class="btn btn-ghost btn-sm" id="btn-add-host">添加机器</button>
+          </div>
+          <ul class="host-list" id="host-list"></ul>
+          <div class="empty" id="hosts-empty" hidden>
+            <div class="empty-mark"></div>
+            <h3>还没有机器</h3>
+            <p>先添加一台机器，在目标机装好公钥，再点「测试连接」确认通路。</p>
+            <button class="btn btn-primary" id="btn-empty-add">添加第一台</button>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="keys-title">
+          <div class="panel-head">
+            <h2 id="keys-title">SSH 密钥</h2>
+            <span class="count" id="key-count">0</span>
+            <span class="spacer"></span>
+            <button class="btn btn-ghost btn-sm" id="btn-add-key">添加密钥</button>
+          </div>
+          <ul class="key-list" id="key-list"></ul>
+          <div class="empty" id="keys-empty" hidden>
+            <div class="empty-mark"></div>
+            <h3>还没有密钥</h3>
+            <p>生成一把专用密钥，把公钥装到目标机，或者直接粘贴你已有的私钥。</p>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="history-title">
+          <div class="panel-head">
+            <h2 id="history-title">最近任务</h2>
+            <span class="spacer"></span>
+            <span class="count">保留最近 50 次</span>
+          </div>
+          <ul class="run-list" id="run-list"></ul>
+        </section>
+      </div>
+
+      <aside class="panel job" aria-labelledby="job-title">
+        <div class="panel-head">
+          <h2 id="job-title">当前任务</h2>
+          <span class="spacer"></span>
+          <span class="chip chip-muted" id="job-status"><i class="chip-dot"></i>空闲</span>
+        </div>
+
+        <div class="job-progress" id="job-progress" hidden>
+          <div class="job-progress-label">
+            <span id="job-progress-text">—</span>
+            <span id="job-progress-time">—</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="job-progress-fill" style="width: 0%"></div></div>
+        </div>
+
+        <ol class="log" id="log"></ol>
+
+        <div class="job-foot">
+          <span id="job-foot-note">日志会写到 data/jobs/</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost btn-sm" id="btn-abort" disabled>中止</button>
+        </div>
+      </aside>
+    </main>
+
+    <!-- 添加 / 编辑机器 -->
+    <div class="scrim" id="scrim"></div>
+    <section class="drawer" id="drawer" aria-labelledby="drawer-title" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <h2 id="drawer-title">添加机器</h2>
+          <p id="drawer-sub">先填连接信息，用下面的命令装公钥，再点「测试连接」</p>
+        </div>
+        <span class="spacer" style="flex: 1"></span>
+        <button class="btn btn-ghost btn-icon btn-sm" id="btn-close-drawer" aria-label="关闭">×</button>
+      </div>
+
+      <div class="drawer-body">
+        <div class="field">
+          <label for="f-name">名称</label>
+          <input class="input" id="f-name" placeholder="aliyun-console" />
+        </div>
+
+        <div class="row-2">
+          <div class="field">
+            <label for="f-addr">地址</label>
+            <input class="input" id="f-addr" placeholder="192.168.1.12" />
+          </div>
+          <div class="field">
+            <label for="f-port">端口</label>
+            <input class="input" id="f-port" value="22" />
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="field">
+            <label for="f-user">用户</label>
+            <input class="input" id="f-user" value="root" />
+          </div>
+          <div class="field">
+            <label for="f-group">分组</label>
+            <select class="select" id="f-group">
+              <option value="console">控制台（优先）</option>
+              <option value="clients" selected>客户端</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="f-key">密钥</label>
+          <select class="select" id="f-key"></select>
+        </div>
+
+        <div class="snippet" id="bootstrap-wrap" hidden>
+          <div class="snippet-head">
+            <span id="bootstrap-title">在目标机执行</span>
+            <span class="spacer"></span>
+            <button class="btn btn-ghost btn-sm" id="btn-copy-bootstrap" style="height: 22px">复制</button>
+          </div>
+          <pre id="bootstrap-cmd"></pre>
+        </div>
+
+        <div class="field">
+          <label for="f-scripts">脚本（路径 | 显示名 | 选项）</label>
+          <textarea class="textarea" id="f-scripts" placeholder="/root/netbird/update-client.sh | 更新客户端 |"></textarea>
+          <span class="hint">一行一个，顺序即执行顺序；第三段用逗号分隔，会渲染成复选框</span>
+        </div>
+
+        <label class="check" for="f-detach">
+          <input type="checkbox" id="f-detach" />
+          <span class="check-text">
+            <strong>升级会断线，后台执行</strong>
+            <span>脚本自己 systemd-run 到后台，界面上会等它断开再回来，然后读版本</span>
+          </span>
+        </label>
+
+        <div class="field" id="detach-extra" hidden>
+          <label for="f-detach-log">后台升级日志路径</label>
+          <input class="input" id="f-detach-log" value="/var/log/netbird-upgrade.log" />
+        </div>
+
+        <label class="check" for="f-self">
+          <input type="checkbox" id="f-self" />
+          <span class="check-text">
+            <strong>这台是工具所在主机</strong>
+            <span>分组内排到最后执行，避免更新自己把剩下的机器全带停</span>
+          </span>
+        </label>
+
+        <div class="field">
+          <label>连接测试</label>
+          <div class="hint" id="f-test-result">还没测试</div>
+        </div>
+      </div>
+
+      <div class="drawer-foot">
+        <button class="btn btn-ghost" id="btn-test">测试连接</button>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost" id="btn-delete" hidden>删除</button>
+        <button class="btn btn-ghost" id="btn-cancel">取消</button>
+        <button class="btn btn-primary" id="btn-save">保存</button>
+      </div>
+    </section>
+
+    <!-- 通用确认/选项对话框 -->
+    <div class="modal-scrim" id="modal-scrim"></div>
+    <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h2 id="modal-title">确认</h2>
+        <p id="modal-desc"></p>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" id="modal-cancel">取消</button>
+        <button class="btn btn-primary" id="modal-ok">确认</button>
+      </div>
+    </section>
+
+    <script src="app.js"></script>
+  </body>
+</html>
