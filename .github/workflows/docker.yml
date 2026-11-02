@@ -4,7 +4,20 @@ on:
   push:
     branches: [main, master]
     tags: ["v*"]
+    # 只有会进镜像的文件才触发构建；改 README / 截图 / 测试不会重建镜像
+    paths:
+      - "app.py"
+      - "nbtool/**"
+      - "static/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
   workflow_dispatch:
+
+# 连着推多个 commit 时，取消还没跑完的旧构建
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
