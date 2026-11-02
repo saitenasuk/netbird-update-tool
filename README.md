@@ -31,8 +31,8 @@ services:
       - ./data:/data
 EOF
 
-# 2. 数据目录（容器以 uid 1000 运行，目录必须归它）
-mkdir -p data && sudo chown 1000:1000 data
+# 2. 数据目录（属主由容器启动时自动修正，这里只要把目录建出来）
+mkdir -p data
 
 # 3. 起服务
 docker compose up -d
@@ -54,7 +54,6 @@ docker compose pull && docker compose up -d
 
 ```bash
 mkdir -p ~/netbird-update-tool/data && cd ~/netbird-update-tool
-sudo chown 1000:1000 data
 
 docker run -d --name netbird-update-tool \
   --restart unless-stopped \
@@ -116,6 +115,14 @@ docker build -t netbird-update-tool .
 - 无 TLS，依赖 netbird 的 WireGuard 或前置反向代理
 - 首次连接目标机是 TOFU（`StrictHostKeyChecking=accept-new`），指纹写入 `/data/known_hosts`
 - 中止会 kill 掉正在跑的那条 ssh 进程；但已经 `systemd-run` 到后台的升级单元收不回来，这类机器只能事后看日志
+
+## 排错
+
+**容器一直重启，日志里是 `PermissionError: '/data/keys'`**
+旧镜像以 uid 1000 直接运行，碰到 root 建的 `data/` 就会起不来。现在的镜像以 root 启动、把 `/data` 的属主交给 `app` 后降权运行，`docker compose pull && docker compose up -d` 即可。
+
+**首次连接提示 host key 校验失败**
+指纹存在 `/data/known_hosts`，删掉数据卷就会重新 TOFU。
 
 ## 开发
 

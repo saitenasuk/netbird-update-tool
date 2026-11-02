@@ -59,8 +59,19 @@ def seed_if_empty(store: Store, keys: KeyStore, path: Path) -> None:
 
 def main() -> int:
     data_dir = Path(os.environ.get("NB_DATA", "data")).expanduser().resolve()
-    for sub in ("keys", "jobs"):
-        (data_dir / sub).mkdir(parents=True, exist_ok=True)
+    try:
+        for sub in ("keys", "jobs"):
+            (data_dir / sub).mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        uid = os.getuid() if hasattr(os, "getuid") else "?"
+        print(f"无法写入数据目录 {data_dir}（当前 uid={uid}）", file=sys.stderr)
+        print(
+            "容器镜像会自动处理属主；如果你是直接跑 python app.py，先执行：\n"
+            f"  sudo chown -R $(id -u):$(id -g) {data_dir}\n"
+            "或换一个可写目录：NB_DATA=/some/writable/dir python3 app.py",
+            file=sys.stderr,
+        )
+        return 1
 
     store = Store(str(data_dir / "db.sqlite3"))
     keys = KeyStore(data_dir / "keys")

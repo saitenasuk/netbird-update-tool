@@ -10,6 +10,7 @@ on:
       - "nbtool/**"
       - "static/**"
       - "Dockerfile"
+      - "docker-entrypoint.sh"
       - ".dockerignore"
       - ".github/workflows/docker.yml"
   workflow_dispatch:
