@@ -115,6 +115,7 @@ docker build -t netbird-update-tool .
 - 私钥以 600 权限明文存在 `/data/keys`，没有主密码加密——能读 volume 就能读私钥。缓解手段是只绑内网 + Basic 认证 + 目录归 root
 - 无 TLS，依赖 netbird 的 WireGuard 或前置反向代理
 - 首次连接目标机是 TOFU（`StrictHostKeyChecking=accept-new`），指纹写入 `/data/known_hosts`
+- 中止会 kill 掉正在跑的那条 ssh 进程；但已经 `systemd-run` 到后台的升级单元收不回来，这类机器只能事后看日志
 
 ## 开发
 
