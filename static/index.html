@@ -151,7 +151,11 @@
           <label>脚本</label>
           <div class="script-rows" id="script-rows"></div>
           <button class="btn btn-ghost btn-sm script-add" id="btn-add-script" type="button">+ 添加脚本</button>
-          <span class="hint">从上到下依次执行。只有控制台那类脚本才需要填组件，勾选后作为参数传给脚本。</span>
+          <span class="hint">
+            脚本必须已经在目标机上，路径写绝对路径，工具只负责触发。<br />
+            组件是这个脚本支持的可选参数（比如控制台脚本的 management、dashboard、signal、relay），
+            更新时会弹勾选框，选中的作为参数传给脚本；脚本不需要参数就留空。
+          </span>
         </div>
 
         <label class="check" for="f-detach">

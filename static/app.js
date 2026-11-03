@@ -429,25 +429,47 @@ function confirmUpdate(hosts) {
 
 // ---------- 脚本行编辑器 ----------
 
+function scriptField(text, hint, input, wide = false) {
+  return el(
+    "label",
+    { class: `script-field${wide ? " script-field-wide" : ""}` },
+    el("span", { class: "script-label" }, text, hint ? el("span", { class: "script-label-hint", text: hint }) : null),
+    input,
+  );
+}
+
 function scriptRow(data = {}) {
   const row = el(
     "div",
     { class: "script-row" },
-    el("input", {
-      class: "input mono",
-      "data-f": "path",
-      placeholder: "/root/netbird/update-client.sh",
-      value: data.path || "",
-      spellcheck: "false",
-    }),
-    el("input", { class: "input", "data-f": "label", placeholder: "更新客户端", value: data.label || "" }),
-    el("input", {
-      class: "input mono",
-      "data-f": "options",
-      placeholder: "组件，可留空",
-      value: (data.options || []).join(","),
-      spellcheck: "false",
-    }),
+    scriptField(
+      "脚本路径",
+      "目标机上已存在，不会上传",
+      el("input", {
+        class: "input mono",
+        "data-f": "path",
+        placeholder: "/root/netbird/update-client.sh",
+        value: data.path || "",
+        spellcheck: "false",
+      }),
+      true,
+    ),
+    scriptField(
+      "显示名",
+      "可留空",
+      el("input", { class: "input", "data-f": "label", placeholder: "更新客户端", value: data.label || "" }),
+    ),
+    scriptField(
+      "组件",
+      "可选",
+      el("input", {
+        class: "input mono",
+        "data-f": "options",
+        placeholder: "management,dashboard",
+        value: (data.options || []).join(","),
+        spellcheck: "false",
+      }),
+    ),
     el(
       "div",
       { class: "script-tools" },
@@ -493,10 +515,17 @@ function collectScripts() {
 function fillKeys(selected) {
   const select = $("#f-key");
   select.textContent = "";
-  select.append(el("option", { value: "", text: state.keys.length ? "（不使用密钥 / 用默认 agent）" : "（还没有密钥）" }));
   for (const key of state.keys) {
     select.append(el("option", { value: key.name, text: key.name, selected: key.name === selected }));
   }
+  // 留一个「不用密钥」的口子：只适合在容器外跑、且依赖 ssh-agent / ~/.ssh 默认身份的场景
+  select.append(
+    el("option", {
+      value: "",
+      text: state.keys.length ? "不使用密钥（依赖默认 SSH 身份，容器里通常没有）" : "还没有密钥，先到下面「SSH 密钥」添加",
+      selected: !selected,
+    }),
+  );
 }
 
 function updateBootstrap() {
