@@ -11,7 +11,28 @@ import re
 import time
 from dataclasses import dataclass, field
 
-_VERSION_RE = re.compile(r"(\d+\.\d+\.\d+[-\w.]*)")
+_VERSION_LINE = re.compile(r"^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$")
+_VERSION_LABELED = re.compile(
+    r"(?:netbird|daemon)(?:\s+version)?[:\s]+v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$", re.I
+)
+
+
+def parse_netbird_version(text: str) -> str | None:
+    """从 `netbird version` 的输出里取版本号。
+
+    输出里可能混着登录横幅（Proxmox 的 LXC 会打印内核版本，例如 7.0.12-1-pve），
+    所以从后往前找「整行就是一个版本号」的行，而不是取全文第一个数字串。
+    """
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    for line in reversed(lines):
+        match = _VERSION_LINE.match(line)
+        if match:
+            return match.group(1)
+    for line in reversed(lines):
+        match = _VERSION_LABELED.search(line)
+        if match:
+            return match.group(1)
+    return None
 
 
 @dataclass
@@ -191,10 +212,7 @@ class Engine:
         run = self.transport.run(host, ["netbird", "version"], timeout=30)
         if not run.ok:
             return None
-        match = _VERSION_RE.search(run.text)
-        if match:
-            return match.group(1)
-        return run.first_line or None
+        return parse_netbird_version(run.text)
 
     def _wait_connection(self, host, emit) -> bool:
         emit(host["name"], "等待 NetBird 断线重连", "dim")

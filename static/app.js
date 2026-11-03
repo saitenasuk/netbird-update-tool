@@ -642,13 +642,38 @@ function formPayload() {
 }
 
 async function saveHost() {
+  const isNew = !state.editing;
   try {
     const payload = formPayload();
-    if (state.editing) await api(`/api/hosts/${state.editing.id}`, { method: "PUT", body: JSON.stringify(payload) });
-    else await api("/api/hosts", { method: "POST", body: JSON.stringify(payload) });
+    const saved = isNew
+      ? await api("/api/hosts", { method: "POST", body: JSON.stringify(payload) })
+      : await api(`/api/hosts/${state.editing.id}`, { method: "PUT", body: JSON.stringify(payload) });
     closeDrawer();
     await refresh();
-    toast("已保存", "info");
+    if (isNew) {
+      toast(`已添加 ${saved.name}，正在体检…`, "info");
+      checkHost(saved.id, true); // 新机器自动体检一次，不阻塞界面
+    } else {
+      toast("已保存", "info");
+    }
+  } catch (err) {
+    toast(err.message, "err");
+  }
+}
+
+async function checkHost(hostId, announce = false) {
+  const host = state.hosts.find((h) => h.id === hostId);
+  try {
+    const result = await api(`/api/hosts/${hostId}/check`, { method: "POST" });
+    const target = state.hosts.find((h) => h.id === hostId);
+    if (target) Object.assign(target, result.host);
+    renderHosts();
+    if (!announce) return;
+    if (result.check.reachable) {
+      toast(`✓ ${host ? host.name : ""} 连通 · netbird ${result.check.version || "未安装"}`, "info");
+    } else {
+      toast(`✗ ${host ? host.name : ""}：${result.check.error || "连不上"}`, "err");
+    }
   } catch (err) {
     toast(err.message, "err");
   }

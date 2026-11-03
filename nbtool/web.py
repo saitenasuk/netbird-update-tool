@@ -19,7 +19,7 @@ from urllib.parse import unquote, urlparse
 
 from . import netaddr
 from .db import Store, ValidationError, parse_scripts
-from .engine import Engine
+from .engine import Engine, parse_netbird_version
 from .jobs import JobManager
 from .keys import KeyError_, KeyStore, bootstrap_command
 
@@ -107,8 +107,7 @@ class App:
         result["reachable"] = True
         version = self.transport.run(host, ["netbird", "version"], timeout=30)
         if version.ok:
-            match = __import__("re").search(r"(\d+\.\d+\.\d+[-\w.]*)", version.text)
-            result["version"] = match.group(1) if match else version.first_line
+            result["version"] = parse_netbird_version(version.text)
         for script in host.get("scripts", []):
             probe = self.transport.run(host, ["test", "-x", script["path"]], timeout=30)
             result["scripts"].append({"path": script["path"], "ok": probe.ok})

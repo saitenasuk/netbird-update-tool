@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nbtool.engine import Engine, Settings  # noqa: E402
+from nbtool.engine import Engine, Settings, parse_netbird_version  # noqa: E402
 from nbtool.transport import FakeTransport, Result  # noqa: E402
 
 
@@ -41,6 +41,38 @@ def base_responses(ok_scripts=(), fail_scripts=()):
     for path in fail_scripts:
         responses[(path,)] = Result(1, [f"{path}炸了"])
     return responses
+
+
+class VersionParseTest(unittest.TestCase):
+    """`netbird version` 的输出里可能混着登录横幅。"""
+
+    def test_banner_with_kernel_version_does_not_leak(self):
+        # Proxmox LXC 上真的会这样：横幅里带内核版本 7.0.12-1-pve
+        text = "Welcome to Proxmox Virtual Environment\nkernel 7.0.12-1-pve\n0.67.0"
+        self.assertEqual(parse_netbird_version(text), "0.67.0")
+
+    def test_plain_and_labelled(self):
+        self.assertEqual(parse_netbird_version("0.67.0"), "0.67.0")
+        self.assertEqual(parse_netbird_version("v0.67.0"), "0.67.0")
+        self.assertEqual(parse_netbird_version("netbird version 0.67.0"), "0.67.0")
+        self.assertEqual(parse_netbird_version("Daemon version: 0.67.0"), "0.67.0")
+
+    def test_missing_version(self):
+        self.assertIsNone(parse_netbird_version("command not found"))
+        self.assertIsNone(parse_netbird_version(""))
+
+    def test_engine_uses_last_line_not_first_match(self):
+        fake = FakeTransport()
+        fake.responses[("true",)] = Result(0)
+        fake.responses[("test", "-x", "/root/up.sh")] = Result(0)
+        fake.responses[("/root/up.sh",)] = Result(0)
+        fake.responses[("netbird", "version")] = Result(
+            0, ["Linux pve 7.0.12-1-pve", "0.61.0"]
+        )
+        engine = Engine(fake, sleep=lambda _s: None)
+        targets = [{"host": mkhost(1, "pve"), "scripts": [mkscript("/root/up.sh")]}]
+        result = engine.run(targets, lambda *a, **k: None)
+        self.assertEqual(result["hosts"][0]["version_before"], "0.61.0")
 
 
 class EngineOrderTest(unittest.TestCase):
