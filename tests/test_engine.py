@@ -75,6 +75,23 @@ class VersionParseTest(unittest.TestCase):
         self.assertEqual(result["hosts"][0]["version_before"], "0.61.0")
 
 
+class SudoTransportTest(unittest.TestCase):
+    def test_sudo_prefix_applied_once(self):
+        from nbtool.transport import SshTransport
+
+        t = SshTransport(keys_dir="/tmp", known_hosts="/tmp/kh", ssh_bin="ssh")
+        host = {"address": "10.0.0.1", "ssh_user": "ubuntu", "ssh_port": 22, "key_name": "k", "sudo": True}
+        self.assertEqual(t.argv(host, ["/usr/local/bin/x", "a"])[-1], "sudo -n /usr/local/bin/x a")
+        self.assertEqual(t.argv(host, ["sudo", "-n", "y"])[-1], "sudo -n y", "已经是 sudo 就不要重复加")
+
+    def test_no_sudo_when_flag_off(self):
+        from nbtool.transport import SshTransport
+
+        t = SshTransport(keys_dir="/tmp", known_hosts="/tmp/kh", ssh_bin="ssh")
+        host = {"address": "10.0.0.1", "ssh_user": "root", "ssh_port": 22, "key_name": "k", "sudo": False}
+        self.assertEqual(t.argv(host, ["/root/x.sh", "a"])[-1], "/root/x.sh a")
+
+
 class EngineOrderTest(unittest.TestCase):
     def test_console_first_then_clients_self_last(self):
         engine = Engine(FakeTransport())

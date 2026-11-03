@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS hosts (
     detach_log          TEXT    NOT NULL DEFAULT '/var/log/netbird-upgrade.log',
     detach_unit_pattern TEXT    NOT NULL DEFAULT 'netbird-upgrade-*',
     self_host           INTEGER NOT NULL DEFAULT 0,
+    sudo                INTEGER NOT NULL DEFAULT 0,
     sort_order          INTEGER NOT NULL DEFAULT 0,
     note                TEXT    NOT NULL DEFAULT '',
     created_at          TEXT    NOT NULL
@@ -110,7 +111,14 @@ class Store:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """给已有的库补列：CREATE TABLE IF NOT EXISTS 不会改动老表结构。"""
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(hosts)")}
+        if "sudo" not in columns:
+            self.conn.execute("ALTER TABLE hosts ADD COLUMN sudo INTEGER NOT NULL DEFAULT 0")
 
     # ---------- 机器 ----------
 
@@ -124,6 +132,7 @@ class Store:
             h["scripts"] = scripts.get(h["id"], [])
             h["detach"] = bool(h["detach"])
             h["self_host"] = bool(h["self_host"])
+            h["sudo"] = bool(h["sudo"])
         return hosts
 
     def _scripts_by_host(self) -> dict[int, list[dict]]:
@@ -145,16 +154,17 @@ class Store:
         host["scripts"] = self._scripts_by_host().get(host_id, [])
         host["detach"] = bool(host["detach"])
         host["self_host"] = bool(host["self_host"])
+        host["sudo"] = bool(host["sudo"])
         return host
 
     def create_host(self, payload: dict) -> int:
         data = self._normalize_host(payload)
         cur = self.conn.execute(
             """INSERT INTO hosts (name, group_name, address, ssh_user, ssh_port, key_name,
-                                  detach, detach_log, detach_unit_pattern, self_host,
+                                  detach, detach_log, detach_unit_pattern, self_host, sudo,
                                   sort_order, note, created_at)
                VALUES (:name, :group_name, :address, :ssh_user, :ssh_port, :key_name,
-                       :detach, :detach_log, :detach_unit_pattern, :self_host,
+                       :detach, :detach_log, :detach_unit_pattern, :self_host, :sudo,
                        :sort_order, :note, :created_at)""",
             data,
         )
@@ -172,7 +182,7 @@ class Store:
                           ssh_user=:ssh_user, ssh_port=:ssh_port, key_name=:key_name,
                           detach=:detach, detach_log=:detach_log,
                           detach_unit_pattern=:detach_unit_pattern, self_host=:self_host,
-                          sort_order=:sort_order, note=:note
+                          sudo=:sudo, sort_order=:sort_order, note=:note
                    WHERE id = :id""",
                 data,
             )
@@ -221,6 +231,7 @@ class Store:
             "detach_log": (payload.get("detach_log") or "/var/log/netbird-upgrade.log").strip(),
             "detach_unit_pattern": (payload.get("detach_unit_pattern") or "netbird-upgrade-*").strip(),
             "self_host": 1 if payload.get("self_host") else 0,
+            "sudo": 1 if payload.get("sudo") else 0,
             "sort_order": int(payload.get("sort_order") or 0),
             "note": (payload.get("note") or "").strip(),
             "created_at": payload.get("created_at") or now_iso(),

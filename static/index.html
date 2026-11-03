@@ -171,6 +171,14 @@
           <input class="input" id="f-detach-log" value="/var/log/netbird-upgrade.log" />
         </div>
 
+        <label class="check" for="f-sudo">
+          <input type="checkbox" id="f-sudo" />
+          <span class="check-text">
+            <strong>用 sudo 执行</strong>
+            <span>登录用户不是 root 时勾上（云镜像的 ubuntu 用户）。需要目标机配置免密 sudo</span>
+          </span>
+        </label>
+
         <label class="check" for="f-self">
           <input type="checkbox" id="f-self" />
           <span class="check-text">

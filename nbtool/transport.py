@@ -63,6 +63,10 @@ class SshTransport:
         self.known_hosts.touch(exist_ok=True)
 
     def argv(self, host: dict, remote_argv: list[str]) -> list[str]:
+        # 登录用户不是 root（云镜像常见）：整条远端命令套一层 sudo -n。
+        # 用 -n 而不是等密码，是因为工具永远无法交互输入密码，卡住比报错更糟。
+        if host.get("sudo") and remote_argv[:1] != ["sudo"]:
+            remote_argv = ["sudo", "-n", *remote_argv]
         args = [
             self.ssh_bin,
             "-F",

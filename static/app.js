@@ -106,6 +106,7 @@ function renderHosts() {
     ];
     if (host.detach) chips.push(el("span", { class: "chip chip-warning" }, el("i", { class: "chip-dot" }), "子网代理"));
     if (host.self_host) chips.push(el("span", { class: "chip chip-muted", text: "本机" }));
+    if (host.sudo) chips.push(el("span", { class: "chip chip-muted", text: "sudo" }));
 
     const st = hostState(host);
     if (st === "running") {
@@ -625,6 +626,7 @@ function openDrawer(host = null) {
   $("#f-detach").checked = !!host?.detach;
   $("#f-detach-log").value = host?.detach_log || "/var/log/netbird-upgrade.log";
   $("#f-self").checked = !!host?.self_host;
+  $("#f-sudo").checked = !!host?.sudo;
   $("#f-test-result").textContent = host?.check?.reachable
     ? `上次体检：netbird ${host.check.version || "未安装"}`
     : "还没测试";
@@ -656,6 +658,7 @@ function formPayload() {
     detach: $("#f-detach").checked,
     detach_log: $("#f-detach-log").value.trim() || "/var/log/netbird-upgrade.log",
     self_host: $("#f-self").checked,
+    sudo: $("#f-sudo").checked,
   };
 }
 

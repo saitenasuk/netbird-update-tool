@@ -124,6 +124,69 @@ class NameValidationTest(unittest.TestCase):
                 validate_name(bad)
 
 
+class SudoColumnTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = str(Path(self.tmp.name) / "db.sqlite3")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_old_database_gets_column(self):
+        """老库没有 sudo 列，打开后要自动补上。"""
+        import sqlite3
+
+        conn = sqlite3.connect(self.path)
+        conn.executescript(
+            """
+            CREATE TABLE hosts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                group_name TEXT NOT NULL DEFAULT 'clients',
+                address TEXT NOT NULL,
+                ssh_user TEXT NOT NULL DEFAULT 'root',
+                ssh_port INTEGER NOT NULL DEFAULT 22,
+                key_name TEXT,
+                detach INTEGER NOT NULL DEFAULT 0,
+                detach_log TEXT NOT NULL DEFAULT '/var/log/netbird-upgrade.log',
+                detach_unit_pattern TEXT NOT NULL DEFAULT 'netbird-upgrade-*',
+                self_host INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+            INSERT INTO hosts (name, address, created_at) VALUES ('old', '10.0.0.1', '2026-01-01');
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        store = Store(self.path)  # 打开时迁移
+        host = store.list_hosts()[0]
+        self.assertEqual(host["name"], "old")
+        self.assertFalse(host["sudo"], "老数据默认不带 sudo")
+        self.assertIn("sudo", {r[1] for r in store.conn.execute("PRAGMA table_info(hosts)")})
+
+    def test_sudo_roundtrip(self):
+        store = Store(self.path)
+        payload = {
+            "name": "oci",
+            "address": "10.0.0.2",
+            "ssh_user": "ubuntu",
+            "key_name": None,
+            "scripts": "/usr/local/bin/update | 更新客户端 |",
+            "sudo": True,
+        }
+        payload["scripts_parsed"] = parse_scripts(payload["scripts"])
+        host_id = store.create_host(payload)
+        self.assertTrue(store.get_host(host_id)["sudo"])
+
+        payload["scripts_parsed"] = parse_scripts(payload["scripts"])
+        payload["sudo"] = False
+        store.update_host(host_id, payload)
+        self.assertFalse(store.get_host(host_id)["sudo"])
+
+
 class NetAddrTest(unittest.TestCase):
     def test_classify(self):
         self.assertEqual(netaddr.classify("100.64.0.7"), "netbird")

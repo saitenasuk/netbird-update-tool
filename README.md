@@ -101,6 +101,31 @@ docker build -t netbird-update-tool .
 | netbird 的 100.x | 升级该机会断开 SSH，界面会红字警告。必须同时勾「升级会断线，后台执行」 |
 | 本机 | 勾「这台是工具所在主机」，地址填 `127.0.0.1`。容器用 host 网络，回环就是宿主机；这条 SSH 不经过任何网卡，升级自己的 netbird 也不会断。sshd 如果只监听特定网卡，就填那个网卡地址 |
 
+## 登录用户不是 root 的机器
+
+云镜像（OCI / AWS / GCP 的 Ubuntu）通常只能用 `ubuntu` 这类用户登录，root 不允许直接 SSH。
+这类机器勾上**用 sudo 执行**即可，工具会把每条远端命令套成 `sudo -n <命令>`，脚本仍然以 root 跑。
+
+前提是目标机配了免密 sudo（云镜像默认就有），先确认：
+
+```bash
+sudo -n true && echo ok
+```
+
+如果没有，加一条 sudoers：
+
+```bash
+echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/nbtool
+```
+
+想收紧到只放行更新脚本（不带参数限制，脚本加参数仍然可用）：
+
+```
+ubuntu ALL=(root) NOPASSWD: /root/netbird/update-client.sh
+```
+
+用 `-n` 而不是等密码，是因为工具没有交互终端：没配免密 sudo 会立刻报错，而不是卡住。
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
