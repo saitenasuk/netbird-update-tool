@@ -435,23 +435,28 @@ const ROLE_LABELS = [ROLE_CONSOLE, ROLE_CLIENT];
 
 // ---------- 脚本行编辑器 ----------
 
-function scriptField(text, hint, input, wide = false) {
+function scriptField(text, hint, input, wide = false, extraClass = "") {
   return el(
     "label",
-    { class: `script-field${wide ? " script-field-wide" : ""}` },
+    { class: `script-field${wide ? " script-field-wide" : ""}${extraClass ? " " + extraClass : ""}` },
     el("span", { class: "script-label" }, text, hint ? el("span", { class: "script-label-hint", text: hint }) : null),
     input,
   );
 }
 
+let roleGroupSeq = 0;
+
 function rolePicker(role) {
+  // 同一行两个单选框必须共用同一个 name 才会互斥；不同行之间又必须不同，
+  // 所以按行生成一次组名，放进循环里就会变成两个独立的组（那就是 bug）。
+  const groupName = `role-group-${++roleGroupSeq}`;
   const box = el("div", { class: "segmented segmented-sm", "data-f": "role" });
   for (const label of ROLE_LABELS) {
     box.append(
       el(
         "label",
         {},
-        el("input", { type: "radio", name: `role-${Math.random().toString(36).slice(2)}`, value: label, checked: label === role }),
+        el("input", { type: "radio", name: groupName, value: label, checked: label === role }),
         el("span", { text: label.replace("更新", "") }),
       ),
     );
@@ -476,7 +481,7 @@ function scriptRow(data = {}) {
       }),
       true,
     ),
-    scriptField("这条脚本是", role === ROLE_CONSOLE ? "会带 4 个组件" : "不带组件", rolePicker(role)),
+    scriptField("这条脚本是", role === ROLE_CONSOLE ? "会带 4 个组件" : "不带组件", rolePicker(role), false, "script-field-role"),
     el(
       "div",
       { class: "script-tools" },
@@ -519,7 +524,8 @@ function collectScripts() {
 }
 
 function refreshRowHint(row) {
-  const hint = row.querySelector(".script-field .script-label-hint");
+  // 只改角色那一格的小字，别把「脚本路径」那一格的说明盖掉
+  const hint = row.querySelector(".script-field-role .script-label-hint");
   if (hint) hint.textContent = rowRole(row) === ROLE_CONSOLE ? "会带 4 个组件" : "不带组件";
 }
 
