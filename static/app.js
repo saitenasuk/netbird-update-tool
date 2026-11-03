@@ -435,6 +435,24 @@ const ROLE_LABELS = [ROLE_CONSOLE, ROLE_CLIENT];
 
 // ---------- 脚本行编辑器 ----------
 
+// 把 ssh 的原始报错翻译成下一步该干什么
+function explainSshError(message) {
+  const m = (message || "").toLowerCase();
+  if (m.includes("permission denied")) {
+    return "公钥没装到这台机器的该账户，或选错了密钥。把上面的公钥安装命令在这台机器上再执行一次";
+  }
+  if (m.includes("connection refused")) return "这个端口上没有 sshd 在监听：检查端口，或目标机没开 ssh";
+  if (m.includes("timed out") || m.includes("no route to host") || m.includes("unreachable")) {
+    return "网络不通：地址写错，或被防火墙拦了";
+  }
+  if (m.includes("host key verification failed")) {
+    return "主机指纹和 /data/known_hosts 里记的不一致（重装过系统？）。确认无误后删掉文件里对应那行";
+  }
+  if (m.includes("could not resolve hostname")) return "地址解析不了：主机名写错了";
+  if (m.includes("too many authentication failures")) return "ssh 尝试的身份太多，先确认这把密钥真的在目标机上";
+  return "";
+}
+
 function scriptField(text, hint, input, wide = false, extraClass = "") {
   return el(
     "label",
@@ -672,7 +690,7 @@ async function checkHost(hostId, announce = false) {
     if (result.check.reachable) {
       toast(`✓ ${host ? host.name : ""} 连通 · netbird ${result.check.version || "未安装"}`, "info");
     } else {
-      toast(`✗ ${host ? host.name : ""}：${result.check.error || "连不上"}`, "err");
+      toast(`✗ ${host ? host.name : ""}：${explainSshError(result.check.error) || result.check.error || "连不上"}`, "err");
     }
   } catch (err) {
     toast(err.message, "err");
@@ -701,9 +719,13 @@ async function testConnection() {
     if (result.ok) {
       box.className = "hint";
       box.textContent = `✓ 连通 · ${result.addr.label} · netbird ${result.version || "未安装"}`;
+      toast(`✓ ${payload.ssh_user}@${payload.address} 连通`, "info");
     } else {
+      const reason = explainSshError(result.error) || result.error || "连不上";
       box.className = "hint err-text";
-      box.textContent = `✗ ${result.error || "连不上"}`;
+      box.textContent = `✗ ${reason}`;
+      box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      toast(`✗ ${reason}`, "err");
     }
   } catch (err) {
     box.className = "hint err-text";
