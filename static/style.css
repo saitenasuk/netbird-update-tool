@@ -745,7 +745,7 @@ p {
   right: 0;
   bottom: 0;
   z-index: 31;
-  width: min(460px, 100vw);
+  width: min(520px, 100vw);
   display: flex;
   flex-direction: column;
   background: var(--surface-1);
@@ -1190,4 +1190,179 @@ body[data-modal="open"] .modal {
 .toast[data-kind="err"] {
   border-color: color-mix(in srgb, var(--danger-500) 50%, transparent);
   color: var(--danger-400);
+}
+
+/* ---------- 表单控件：去掉原生外观 ---------- */
+
+.select,
+select.select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23909caa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6.5l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 14px;
+  cursor: pointer;
+}
+
+.select:hover {
+  border-color: var(--text-3);
+}
+
+.select option {
+  background: var(--surface-1);
+  color: var(--text-1);
+}
+
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-0);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+input[type="checkbox"]:hover {
+  border-color: var(--text-3);
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 9px;
+  height: 9px;
+  background: #fff;
+  transform: scale(0);
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+  clip-path: polygon(14% 47%, 0 62%, 39% 100%, 100% 22%, 86% 8%, 38% 72%);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+}
+
+input[type="checkbox"]:checked::after {
+  transform: scale(1);
+}
+
+input[type="checkbox"]:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--primary-400);
+  outline-offset: 2px;
+}
+
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-3);
+  opacity: 0.75;
+}
+
+/* ---------- 脚本行编辑器 ---------- */
+
+.script-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.script-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 2px var(--s-2);
+  align-items: center;
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-0);
+}
+
+/* 路径独占一行：460px 的抽屉里三列并排会把路径挤得看不见 */
+.script-row [data-f="path"] {
+  grid-column: 1 / -1;
+}
+
+.script-row .input {
+  border-color: transparent;
+  background: transparent;
+  padding: 6px var(--s-2);
+}
+
+.script-row .input:hover {
+  border-color: var(--border);
+}
+
+.script-row .input:focus {
+  border-color: var(--primary-500);
+  background: var(--surface-1);
+}
+
+.script-row .input.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+}
+
+.script-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.script-tools .btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  justify-content: center;
+  color: var(--text-3);
+  border-color: transparent;
+  background: transparent;
+}
+
+.script-tools .btn:hover {
+  color: var(--text-1);
+  background: var(--surface-2);
+}
+
+.script-tools .btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.script-tools .btn[data-act="del"]:hover {
+  color: var(--danger-400);
+}
+
+.script-add {
+  align-self: flex-start;
+  margin-top: var(--s-1);
+}
+
+.script-head {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .script-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
 }

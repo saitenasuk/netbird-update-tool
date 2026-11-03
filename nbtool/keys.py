@@ -11,7 +11,8 @@ import re
 import subprocess
 from pathlib import Path
 
-_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# 允许中文等 unicode 字母/数字，只挡真正会出问题的字符（路径分隔符、控制字符、空格）
+_BAD_CHARS = set("/\\:*?\"<>| \t\r\n\x00")
 
 BOOTSTRAP_TEMPLATE = """mkdir -p ~/.ssh && chmod 700 ~/.ssh
 echo '{pubkey}' >> ~/.ssh/authorized_keys
@@ -56,9 +57,7 @@ class KeyStore:
         return self.path(name).is_file()
 
     def path(self, name: str) -> Path:
-        if not _NAME_RE.match(name or ""):
-            raise KeyError_("密钥名只能用字母数字和 . _ -")
-        return self.dir / name
+        return self.dir / validate_name(name, "密钥名")
 
     def public_key(self, name: str) -> str:
         p = self.path(name)
@@ -120,6 +119,22 @@ class KeyStore:
         p = self.path(name)
         p.unlink(missing_ok=True)
         Path(str(p) + ".pub").unlink(missing_ok=True)
+
+
+def validate_name(name: str, what: str = "名称") -> str:
+    """校验用作文件名的名字：允许中文，挡掉路径分隔符和控制字符。"""
+    name = (name or "").strip()
+    if not name:
+        raise KeyError_(f"{what}不能为空")
+    if len(name) > 64:
+        raise KeyError_(f"{what}最多 64 个字符")
+    if name in {".", ".."} or name.startswith("."):
+        raise KeyError_(f"{what}不能以点开头")
+    bad = sorted(set(name) & _BAD_CHARS)
+    if bad:
+        shown = "、".join(repr(c) for c in bad)
+        raise KeyError_(f"{what}里不能包含 {shown}（不能有空格、斜杠、冒号等字符）")
+    return name
 
 
 def bootstrap_command(public_key: str, user: str = "root") -> str:

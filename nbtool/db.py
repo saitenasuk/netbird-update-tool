@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
-_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+# 机器名只是标签，允许中文；不能有空格、斜杠、控制字符
+_BAD_NAME_CHARS = set("/\\:*?\"<>| \t\r\n\x00")
 _OPTION_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
 
 
@@ -186,14 +187,21 @@ class Store:
 
     def _normalize_host(self, payload: dict) -> dict:
         name = (payload.get("name") or "").strip()
-        if not _NAME_RE.match(name):
-            raise ValidationError("名称只能用字母数字和 . _ -，1–64 字符")
+        if not name:
+            raise ValidationError("名称不能为空")
+        if len(name) > 64:
+            raise ValidationError("名称最多 64 个字符")
+        bad = sorted(set(name) & _BAD_NAME_CHARS)
+        if bad:
+            raise ValidationError(
+                "名称里不能包含 " + "、".join(repr(c) for c in bad) + "（不能有空格、斜杠、冒号等）"
+            )
         address = (payload.get("address") or "").strip()
         if not address or any(c.isspace() for c in address):
             raise ValidationError("地址不能为空，且不能含空格")
         user = (payload.get("ssh_user") or "root").strip()
-        if not _NAME_RE.match(user):
-            raise ValidationError("用户名不合法")
+        if not re.match(r"^[A-Za-z0-9._-]{1,32}$", user):
+            raise ValidationError("用户名只能用字母、数字和 . _ -")
         try:
             port = int(payload.get("ssh_port") or 22)
         except (TypeError, ValueError) as exc:

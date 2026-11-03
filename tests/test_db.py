@@ -8,6 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nbtool import netaddr  # noqa: E402
+from nbtool.keys import KeyError_ as KeyNameError  # noqa: E402
+from nbtool.keys import validate_name  # noqa: E402
 from nbtool.db import Store, ValidationError, parse_scripts  # noqa: E402
 
 
@@ -107,6 +109,19 @@ class StoreTest(unittest.TestCase):
         self.store.prune_jobs(2)
         self.assertEqual(len(self.store.list_jobs()), 2)
         self.assertTrue(self.store.get_job("job-4"))
+
+
+class NameValidationTest(unittest.TestCase):
+    """名字允许中文，但挡掉路径分隔符和控制字符。"""
+
+    def test_chinese_names_allowed(self):
+        self.assertEqual(validate_name("我的密钥"), "我的密钥")
+        self.assertEqual(validate_name("  测试密钥  "), "测试密钥")
+
+    def test_rejects_path_and_control_chars(self):
+        for bad in ["", "a/b", "a\\b", "a:b", "a b", ".hidden", "..", "a" * 65]:
+            with self.assertRaises(KeyNameError, msg=repr(bad)):
+                validate_name(bad)
 
 
 class NetAddrTest(unittest.TestCase):

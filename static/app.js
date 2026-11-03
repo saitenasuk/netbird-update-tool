@@ -426,6 +426,68 @@ function confirmUpdate(hosts) {
   });
 }
 
+
+// ---------- 脚本行编辑器 ----------
+
+function scriptRow(data = {}) {
+  const row = el(
+    "div",
+    { class: "script-row" },
+    el("input", {
+      class: "input mono",
+      "data-f": "path",
+      placeholder: "/root/netbird/update-client.sh",
+      value: data.path || "",
+      spellcheck: "false",
+    }),
+    el("input", { class: "input", "data-f": "label", placeholder: "更新客户端", value: data.label || "" }),
+    el("input", {
+      class: "input mono",
+      "data-f": "options",
+      placeholder: "组件，可留空",
+      value: (data.options || []).join(","),
+      spellcheck: "false",
+    }),
+    el(
+      "div",
+      { class: "script-tools" },
+      el("button", { class: "btn", "data-act": "up", type: "button", title: "上移", text: "↑" }),
+      el("button", { class: "btn", "data-act": "down", type: "button", title: "下移", text: "↓" }),
+      el("button", { class: "btn", "data-act": "del", type: "button", title: "删除", text: "×" }),
+    ),
+  );
+  return row;
+}
+
+function renderScriptRows(scripts) {
+  const box = $("#script-rows");
+  box.textContent = "";
+  const list = scripts && scripts.length ? scripts : [{}];
+  for (const script of list) box.append(scriptRow(script));
+  refreshScriptTools();
+}
+
+function refreshScriptTools() {
+  const rows = [...document.querySelectorAll("#script-rows .script-row")];
+  rows.forEach((row, i) => {
+    row.querySelector('[data-act="up"]').disabled = i === 0;
+    row.querySelector('[data-act="down"]').disabled = i === rows.length - 1;
+    row.querySelector('[data-act="del"]').disabled = rows.length === 1;
+  });
+}
+
+function collectScripts() {
+  const rows = [...document.querySelectorAll("#script-rows .script-row")];
+  const lines = [];
+  for (const row of rows) {
+    const get = (f) => row.querySelector(`[data-f="${f}"]`).value.trim();
+    const path = get("path");
+    if (!path) continue;
+    lines.push(`${path} | ${get("label")} | ${get("options")}`);
+  }
+  return lines.join("\n");
+}
+
 // ---------- 抽屉 ----------
 
 function fillKeys(selected) {
@@ -435,10 +497,6 @@ function fillKeys(selected) {
   for (const key of state.keys) {
     select.append(el("option", { value: key.name, text: key.name, selected: key.name === selected }));
   }
-}
-
-function scriptsToText(scripts) {
-  return scripts.map((s) => `${s.path} | ${s.label} | ${s.options.join(",")}`.trim()).join("\n");
 }
 
 function updateBootstrap() {
@@ -470,7 +528,7 @@ function openDrawer(host = null) {
   $("#f-port").value = host?.ssh_port || 22;
   $("#f-user").value = host?.ssh_user || "root";
   $("#f-group").value = host?.group_name || "clients";
-  $("#f-scripts").value = host ? scriptsToText(host.scripts) : "";
+  renderScriptRows(host ? host.scripts : []);
   $("#f-detach").checked = !!host?.detach;
   $("#f-detach-log").value = host?.detach_log || "/var/log/netbird-upgrade.log";
   $("#f-self").checked = !!host?.self_host;
@@ -501,7 +559,7 @@ function formPayload() {
     ssh_user: $("#f-user").value.trim() || "root",
     group_name: $("#f-group").value,
     key_name: $("#f-key").value,
-    scripts: $("#f-scripts").value,
+    scripts: collectScripts(),
     detach: $("#f-detach").checked,
     detach_log: $("#f-detach-log").value.trim() || "/var/log/netbird-upgrade.log",
     self_host: $("#f-self").checked,
@@ -556,7 +614,7 @@ async function testConnection() {
 // ---------- 密钥 ----------
 
 function openKeyModal() {
-  const name = el("input", { class: "input", id: "k-name", placeholder: "nbtool-ed25519" });
+  const name = el("input", { class: "input", id: "k-name", placeholder: "nbtool-ed25519", value: "nbtool-ed25519" });
   const textarea = el("textarea", { class: "textarea", placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----" });
   const generate = el("input", { type: "checkbox", checked: true });
   const keyField = el("div", { class: "field", hidden: true }, el("label", { text: "私钥内容" }), textarea);
@@ -566,7 +624,7 @@ function openKeyModal() {
 
   const body = el(
     "div",
-    {},
+    { style: "display:flex;flex-direction:column;gap:16px" },
     el("div", { class: "field" }, el("label", { text: "名称" }), name),
     el("label", { class: "opt" }, generate, "让服务端生成一把 ed25519 密钥"),
     keyField,
@@ -575,7 +633,7 @@ function openKeyModal() {
 
   openModal({
     title: "添加密钥",
-    desc: "生成后把公钥装到目标机，或用你已有的私钥直接测连接",
+    desc: "一把密钥可以给所有机器共用；每台机器上装的是同一把公钥，不需要逐台生成",
     body,
     okText: "创建",
     onSubmit: async () => {
@@ -681,6 +739,25 @@ function bind() {
   $("#f-key").addEventListener("change", updateBootstrap);
   $("#f-addr").addEventListener("input", updateBootstrap);
   $("#f-user").addEventListener("input", updateBootstrap);
+  $("#btn-add-script").addEventListener("click", () => {
+    $("#script-rows").append(scriptRow({}));
+    refreshScriptTools();
+    $("#script-rows").lastElementChild.querySelector('[data-f="path"]').focus();
+  });
+
+  $("#script-rows").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-act]");
+    if (!button) return;
+    const row = button.closest(".script-row");
+    const rows = [...document.querySelectorAll("#script-rows .script-row")];
+    const act = button.dataset.act;
+    if (act === "del") row.remove();
+    if (act === "up" && row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling);
+    if (act === "down" && row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row);
+    if (!rows.length) $("#script-rows").append(scriptRow({}));
+    refreshScriptTools();
+  });
+
   $("#f-detach").addEventListener("change", () => {
     $("#detach-extra").hidden = !$("#f-detach").checked;
   });
