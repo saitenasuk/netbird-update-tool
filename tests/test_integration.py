@@ -61,6 +61,21 @@ class SshTransportTest(unittest.TestCase):
         self.assertTrue(result.timed_out)
         self.assertFalse(result.ok)
 
+    def test_quoting_survives_remote_login_shell(self):
+        """远端登录 shell 可能是 fish：shlex.join 拼出来的参数必须原样到达。
+
+        这台机器的 root 登录 shell 就是 /usr/bin/fish，跑这条测试能真正覆盖。
+        """
+        seen = []
+        result = self.transport.run(
+            self.host,
+            ["printf", "%s\\n", "a b", "c*d", "$HOME", "e;f", "g'h"],
+            timeout=20,
+            on_line=seen.append,
+        )
+        self.assertTrue(result.ok, result.text)
+        self.assertEqual(seen, ["a b", "c*d", "$HOME", "e;f", "g'h"])
+
     def test_bad_key_fails_cleanly(self):
         bad = dict(self.host, key_name="does-not-exist")
         result = self.transport.run(bad, ["true"], timeout=10)

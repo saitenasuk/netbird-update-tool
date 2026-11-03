@@ -111,6 +111,16 @@ docker build -t netbird-update-tool .
 | `NB_AUTH_USER` | `admin` | 认证用户名 |
 | `NB_SEED` | `$NB_DATA/seed.json` | 首次启动（库为空）时导入的初始清单 |
 
+## 脚本用什么写都行
+
+工具不解释脚本，只把它当**可执行文件**调用，所以 bash / sh / fish / Python 都支持：
+
+- 必须有 shebang（`#!/usr/bin/env fish` 这种），并且 `chmod +x`
+- 参数按空格传进去，fish 里就是 `$argv`
+- 远端非交互 SSH **不会**加载 `config.fish`，所以别依赖 alias / abbr / 你在配置里加的 PATH；用绝对路径，或者在脚本开头自己设
+
+> 这一步是实测过的：本地集成测试跑在一台 root 登录 shell 为 fish 的机器上（`test_quoting_survives_remote_login_shell`）。
+
 ## 安全边界
 
 - 界面只能触发数据库里登记过的脚本路径，以及脚本声明的选项名，**没有执行任意命令的入口**
