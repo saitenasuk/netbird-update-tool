@@ -119,19 +119,20 @@
           </div>
         </div>
 
-        <div class="row-2">
+        <div class="row-2 two">
           <div class="field">
             <label for="f-user">用户</label>
             <input class="input" id="f-user" value="root" />
           </div>
           <div class="field">
-            <label for="f-group">分组</label>
-            <select class="select" id="f-group">
-              <option value="console">控制台（优先）</option>
-              <option value="clients" selected>客户端</option>
-            </select>
+            <label>分组</label>
+            <div class="segmented" id="f-group">
+              <label><input type="radio" name="f-group" value="console" /><span>控制台</span></label>
+              <label><input type="radio" name="f-group" value="clients" checked /><span>客户端</span></label>
+            </div>
           </div>
         </div>
+        <span class="hint" id="group-hint">客户端逐台更新，一台失败不影响其他机器。</span>
 
         <div class="field">
           <label for="f-key">密钥</label>
@@ -152,9 +153,8 @@
           <div class="script-rows" id="script-rows"></div>
           <button class="btn btn-ghost btn-sm script-add" id="btn-add-script" type="button">+ 添加脚本</button>
           <span class="hint">
-            脚本必须已经在目标机上，路径写绝对路径，工具只负责触发。<br />
-            组件是这个脚本支持的可选参数（比如控制台脚本的 management、dashboard、signal、relay），
-            更新时会弹勾选框，选中的作为参数传给脚本；脚本不需要参数就留空。
+            填目标机上<b>已经存在</b>的脚本绝对路径，工具只负责触发，不上传文件。从上到下依次执行。<br />
+            标成「更新控制台」的脚本会自动带上 管理后台 / 前端 UI / 信号 / 中继 四个组件，更新时弹勾选框。
           </span>
         </div>
 

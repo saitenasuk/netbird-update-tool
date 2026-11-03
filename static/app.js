@@ -427,6 +427,12 @@ function confirmUpdate(hosts) {
 }
 
 
+// 控制台脚本支持的组件：不再让用户手填，按脚本角色自动带上
+const CONSOLE_COMPONENTS = ["management", "dashboard", "signal", "relay"];
+const ROLE_CONSOLE = "更新控制台";
+const ROLE_CLIENT = "更新客户端";
+const ROLE_LABELS = [ROLE_CONSOLE, ROLE_CLIENT];
+
 // ---------- 脚本行编辑器 ----------
 
 function scriptField(text, hint, input, wide = false) {
@@ -438,7 +444,23 @@ function scriptField(text, hint, input, wide = false) {
   );
 }
 
+function rolePicker(role) {
+  const box = el("div", { class: "segmented segmented-sm", "data-f": "role" });
+  for (const label of ROLE_LABELS) {
+    box.append(
+      el(
+        "label",
+        {},
+        el("input", { type: "radio", name: `role-${Math.random().toString(36).slice(2)}`, value: label, checked: label === role }),
+        el("span", { text: label.replace("更新", "") }),
+      ),
+    );
+  }
+  return box;
+}
+
 function scriptRow(data = {}) {
+  const role = data.label && ROLE_LABELS.includes(data.label) ? data.label : ROLE_CLIENT;
   const row = el(
     "div",
     { class: "script-row" },
@@ -454,22 +476,7 @@ function scriptRow(data = {}) {
       }),
       true,
     ),
-    scriptField(
-      "显示名",
-      "可留空",
-      el("input", { class: "input", "data-f": "label", placeholder: "更新客户端", value: data.label || "" }),
-    ),
-    scriptField(
-      "组件",
-      "可选",
-      el("input", {
-        class: "input mono",
-        "data-f": "options",
-        placeholder: "management,dashboard",
-        value: (data.options || []).join(","),
-        spellcheck: "false",
-      }),
-    ),
+    scriptField("这条脚本是", role === ROLE_CONSOLE ? "会带 4 个组件" : "不带组件", rolePicker(role)),
     el(
       "div",
       { class: "script-tools" },
@@ -502,12 +509,27 @@ function collectScripts() {
   const rows = [...document.querySelectorAll("#script-rows .script-row")];
   const lines = [];
   for (const row of rows) {
-    const get = (f) => row.querySelector(`[data-f="${f}"]`).value.trim();
-    const path = get("path");
+    const path = row.querySelector('[data-f="path"]').value.trim();
     if (!path) continue;
-    lines.push(`${path} | ${get("label")} | ${get("options")}`);
+    const role = row.querySelector('input[name^="role-"]:checked')?.value || ROLE_CLIENT;
+    const options = role === ROLE_CONSOLE ? CONSOLE_COMPONENTS.join(",") : "";
+    lines.push(`${path} | ${role} | ${options}`);
   }
   return lines.join("\n");
+}
+
+function refreshRowHint(row) {
+  const hint = row.querySelector(".script-field .script-label-hint");
+  if (hint) hint.textContent = rowRole(row) === ROLE_CONSOLE ? "会带 4 个组件" : "不带组件";
+}
+
+function rowRole(row) {
+  return row.querySelector('input[name^="role-"]:checked')?.value || ROLE_CLIENT;
+}
+
+function setRowRole(row, role) {
+  const input = [...row.querySelectorAll('input[name^="role-"]')].find((i) => i.value === role);
+  if (input) input.checked = true;
 }
 
 // ---------- 抽屉 ----------
@@ -526,6 +548,24 @@ function fillKeys(selected) {
       selected: !selected,
     }),
   );
+}
+
+function getGroup() {
+  return document.querySelector('#f-group input:checked')?.value || "clients";
+}
+
+function setGroup(value) {
+  const inputs = [...document.querySelectorAll("#f-group input")];
+  const target = inputs.find((i) => i.value === value) || inputs.find((i) => i.value === "clients");
+  if (target) target.checked = true;
+  updateGroupHint();
+}
+
+function updateGroupHint() {
+  $("#group-hint").textContent =
+    getGroup() === "console"
+      ? "控制台会先更新，它失败就中止整个任务，后面的机器都不动。"
+      : "客户端逐台更新，一台失败不影响其他机器。";
 }
 
 function updateBootstrap() {
@@ -556,7 +596,7 @@ function openDrawer(host = null) {
   $("#f-addr").value = host?.address || "";
   $("#f-port").value = host?.ssh_port || 22;
   $("#f-user").value = host?.ssh_user || "root";
-  $("#f-group").value = host?.group_name || "clients";
+  setGroup(host?.group_name || "clients");
   renderScriptRows(host ? host.scripts : []);
   $("#f-detach").checked = !!host?.detach;
   $("#f-detach-log").value = host?.detach_log || "/var/log/netbird-upgrade.log";
@@ -586,7 +626,7 @@ function formPayload() {
     address: $("#f-addr").value.trim(),
     ssh_port: Number($("#f-port").value) || 22,
     ssh_user: $("#f-user").value.trim() || "root",
-    group_name: $("#f-group").value,
+    group_name: getGroup(),
     key_name: $("#f-key").value,
     scripts: collectScripts(),
     detach: $("#f-detach").checked,
@@ -768,10 +808,26 @@ function bind() {
   $("#f-key").addEventListener("change", updateBootstrap);
   $("#f-addr").addEventListener("input", updateBootstrap);
   $("#f-user").addEventListener("input", updateBootstrap);
+  $("#f-group").addEventListener("change", () => {
+    updateGroupHint();
+    const rows = [...document.querySelectorAll("#script-rows .script-row")];
+    if (getGroup() === "console" && rows.length && !rows.some((r) => rowRole(r) === ROLE_CONSOLE)) {
+      setRowRole(rows[0], ROLE_CONSOLE);
+      refreshRowHint(rows[0]);
+    }
+  });
+
   $("#btn-add-script").addEventListener("click", () => {
-    $("#script-rows").append(scriptRow({}));
+    const rows = [...document.querySelectorAll("#script-rows .script-row")];
+    const role = getGroup() === "console" && !rows.some((r) => rowRole(r) === ROLE_CONSOLE) ? ROLE_CONSOLE : ROLE_CLIENT;
+    $("#script-rows").append(scriptRow({ label: role }));
     refreshScriptTools();
     $("#script-rows").lastElementChild.querySelector('[data-f="path"]').focus();
+  });
+
+  $("#script-rows").addEventListener("change", (event) => {
+    const row = event.target.closest(".script-row");
+    if (row && event.target.name?.startsWith("role-")) refreshRowHint(row);
   });
 
   $("#script-rows").addEventListener("click", (event) => {
