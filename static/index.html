@@ -17,7 +17,6 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost" id="btn-check-all" title="检查连通性、脚本是否可执行、当前版本，不会执行更新">体检</button>
         <button class="btn btn-primary" id="btn-update-all">全部更新</button>
       </div>
     </header>
@@ -29,6 +28,7 @@
             <h2 id="hosts-title">机器</h2>
             <span class="count" id="host-count">0</span>
             <span class="spacer"></span>
+            <button class="btn btn-ghost btn-sm btn-icon" id="btn-refresh" title="重新检查所有机器（连通性 + 版本）">↻</button>
             <button class="btn btn-ghost btn-sm" id="btn-add-host">添加机器</button>
           </div>
           <ul class="host-list" id="host-list"></ul>

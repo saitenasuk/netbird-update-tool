@@ -44,9 +44,7 @@ class App:
         self.transport = transport
         self.password = password
         self.auth_user = auth_user
-        self.checks: dict[int, dict] = {}  # host_id -> 最近一次体检结果
         self.locals = netaddr.local_addresses()
-        self._lock = threading.Lock()
 
     # ---------- 数据成形 ----------
 
@@ -54,7 +52,7 @@ class App:
         view = dict(host)
         view.pop("created_at", None)
         view["addr"] = netaddr.describe(host["address"], self.locals)
-        view["check"] = self.checks.get(host["id"], {})
+        view["check"] = host.get("check") or {}
         view["bootstrap"] = ""
         if host.get("key_name") and self.keys.exists(host["key_name"]):
             try:
@@ -90,30 +88,44 @@ class App:
             if self.store.get_host(host_id) is None:
                 raise ValidationError("机器不存在")
             self.store.update_host(host_id, payload)
-            with self._lock:
-                self.checks.pop(host_id, None)
         return self.host_view(self.store.get_host(host_id))
 
-    def check_host(self, host: dict) -> dict:
-        """体检：连通性、脚本可执行、当前版本。"""
-        result = {"at": _now(), "reachable": False, "error": "", "version": None, "scripts": []}
+    def check_host(self, host: dict, deep: bool = True) -> dict:
+        """体检。
+
+        deep=True：连通性 + 每个脚本 test -x + 版本（添加/编辑时用，一次查清楚）
+        deep=False：连通性 + 版本（日常刷新用，少几次往返）
+        结果落到 db，重启后不会全部变回「未检查」。
+        """
+        result = {
+            "at": _now(),
+            "reachable": False,
+            "error": "",
+            "version": None,
+            "deep": deep,
+            "scripts": [],
+        }
         ping = self.transport.run(host, ["true"], timeout=self.engine.s.connect_timeout + 5)
         if not ping.ok:
             lines = [l for l in ping.lines if l.strip()]
             result["error"] = lines[-1] if lines else "SSH 连不上"
-            with self._lock:
-                self.checks[host["id"]] = result
+            result["raw_error"] = result["error"]
+            self._save_check(host, result)
             return result
         result["reachable"] = True
         version = self.transport.run(host, ["netbird", "version"], timeout=30)
         if version.ok:
             result["version"] = parse_netbird_version(version.text)
-        for script in host.get("scripts", []):
-            probe = self.transport.run(host, ["test", "-x", script["path"]], timeout=30)
-            result["scripts"].append({"path": script["path"], "ok": probe.ok})
-        with self._lock:
-            self.checks[host["id"]] = result
+        if deep:
+            for script in host.get("scripts", []):
+                probe = self.transport.run(host, ["test", "-x", script["path"]], timeout=30)
+                result["scripts"].append({"path": script["path"], "ok": probe.ok})
+        self._save_check(host, result)
         return result
+
+    def _save_check(self, host: dict, result: dict) -> None:
+        if host.get("id"):
+            self.store.set_check(host["id"], result)
 
     # ---------- 任务 ----------
 
@@ -165,7 +177,22 @@ class App:
         engine = self.engine
 
         def worker():
-            return engine.run(targets, job.emit, job.is_aborted)
+            result = engine.run(targets, job.emit, job.is_aborted)
+            # 任务里已经读到更新后的版本，直接回填，不用再 SSH 一次
+            for item in result.get("hosts", []):
+                if item.get("status") == "ok" and item.get("version_after"):
+                    self.store.set_check(
+                        item["host_id"],
+                        {
+                            "at": _now(),
+                            "reachable": True,
+                            "error": "",
+                            "version": item["version_after"],
+                            "deep": False,
+                            "scripts": [],
+                        },
+                    )
+            return result
 
         self.jobs.start(job, worker)
         return job.to_dict()
@@ -320,7 +347,8 @@ class Handler(BaseHTTPRequestHandler):
             view = self.app.host_view(host)
             return self._json({"command": view["bootstrap"], "addr": view["addr"]})
         if action == "check" and method == "POST":
-            result = self.app.check_host(host)
+            body = self._body()
+            result = self.app.check_host(host, deep=bool(body.get("deep", True)))
             return self._json({"host": self.app.host_view(self.app.store.get_host(host_id)), "check": result})
         if action:
             return self._error(404, "未知路由")

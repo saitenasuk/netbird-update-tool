@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS hosts (
     detach_unit_pattern TEXT    NOT NULL DEFAULT 'netbird-upgrade-*',
     self_host           INTEGER NOT NULL DEFAULT 0,
     sudo                INTEGER NOT NULL DEFAULT 0,
+    last_check          TEXT    NOT NULL DEFAULT '',
     sort_order          INTEGER NOT NULL DEFAULT 0,
     note                TEXT    NOT NULL DEFAULT '',
     created_at          TEXT    NOT NULL
@@ -59,6 +60,15 @@ CREATE TABLE IF NOT EXISTS settings (
 # 机器名只是标签，允许中文；不能有空格、斜杠、控制字符
 _BAD_NAME_CHARS = set("/\\:*?\"<>| \t\r\n\x00")
 _OPTION_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
+
+
+def _loads(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
 
 
 def now_iso() -> str:
@@ -119,6 +129,8 @@ class Store:
         columns = {row[1] for row in self.conn.execute("PRAGMA table_info(hosts)")}
         if "sudo" not in columns:
             self.conn.execute("ALTER TABLE hosts ADD COLUMN sudo INTEGER NOT NULL DEFAULT 0")
+        if "last_check" not in columns:
+            self.conn.execute("ALTER TABLE hosts ADD COLUMN last_check TEXT NOT NULL DEFAULT ''")
 
     # ---------- 机器 ----------
 
@@ -133,6 +145,7 @@ class Store:
             h["detach"] = bool(h["detach"])
             h["self_host"] = bool(h["self_host"])
             h["sudo"] = bool(h["sudo"])
+            h["check"] = _loads(h.get("last_check"))
         return hosts
 
     def _scripts_by_host(self) -> dict[int, list[dict]]:
@@ -155,6 +168,7 @@ class Store:
         host["detach"] = bool(host["detach"])
         host["self_host"] = bool(host["self_host"])
         host["sudo"] = bool(host["sudo"])
+        host["check"] = _loads(host.get("last_check"))
         return host
 
     def create_host(self, payload: dict) -> int:
@@ -253,6 +267,14 @@ class Store:
                     s.get("timeout"),
                 ),
             )
+
+    def set_check(self, host_id: int, check: dict) -> None:
+        """把最近一次体检结果落库，重启后界面不会全变回「未检查」。"""
+        self.conn.execute(
+            "UPDATE hosts SET last_check = ? WHERE id = ?",
+            (json.dumps(check, ensure_ascii=False), host_id),
+        )
+        self.conn.commit()
 
     # ---------- 任务 ----------
 

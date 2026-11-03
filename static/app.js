@@ -60,6 +60,17 @@ function toast(message, kind = "info") {
   toastTimer = setTimeout(() => delete node.dataset.show, 4200);
 }
 
+function fmtAgo(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const sec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return "刚刚";
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
+  return fmtDate(iso);
+}
+
 function fmtDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -84,7 +95,7 @@ function renderTopbar() {
   $("#brand-sub").textContent =
     count === 0 ? "还没有机器" : `${count} 台机器${last ? ` · 上次任务 ${fmtDate(last.created_at)}` : ""}`;
   $("#btn-update-all").disabled = !!state.active || count === 0;
-  $("#btn-check-all").disabled = !!state.active || count === 0;
+  $("#btn-refresh").disabled = !!state.active || count === 0;
 }
 
 function hostState(host) {
@@ -121,6 +132,7 @@ function renderHosts() {
       el("span", { class: "addr", "data-kind": host.addr.kind }, el("i", { class: "addr-dot" }), host.address),
       el("span", { text: `${host.scripts.length} 个脚本` }),
     ];
+    if (host.check && host.check.at) meta.push(el("span", { text: `检查于 ${fmtAgo(host.check.at)}` }));
     if (host.addr.warn) meta.push(el("span", { class: "err-text", text: host.addr.warn }));
     else if (host.note) meta.push(el("span", { text: host.note }));
 
@@ -128,7 +140,7 @@ function renderHosts() {
     if (host.check && host.check.version) version.textContent = host.check.version;
     else if (host.check && host.check.error) version.textContent = "—";
     else if (host.check && host.check.reachable) version.textContent = "未安装";
-    else version.textContent = "未体检";
+    else version.textContent = "未检查";
 
     const row = el(
       "li",
@@ -685,7 +697,10 @@ async function saveHost() {
 async function checkHost(hostId, announce = false) {
   const host = state.hosts.find((h) => h.id === hostId);
   try {
-    const result = await api(`/api/hosts/${hostId}/check`, { method: "POST" });
+    const result = await api(`/api/hosts/${hostId}/check`, {
+      method: "POST",
+      body: JSON.stringify({ deep: true }),
+    });
     const target = state.hosts.find((h) => h.id === hostId);
     if (target) Object.assign(target, result.host);
     renderHosts();
@@ -836,18 +851,24 @@ async function refresh() {
   render();
 }
 
-async function checkAll() {
-  toast("开始体检…", "info");
+// 日常刷新只查连通性和版本；添加/编辑机器时才做完整检查（含脚本可执行）
+async function refreshAll() {
+  if (!state.hosts.length) return;
+  toast("正在检查所有机器的连通性与版本…", "info");
   for (const host of state.hosts) {
     try {
-      const result = await api(`/api/hosts/${host.id}/check`, { method: "POST" });
-      Object.assign(host, result.host);
+      const result = await api(`/api/hosts/${host.id}/check`, {
+        method: "POST",
+        body: JSON.stringify({ deep: false }),
+      });
+      const target = state.hosts.find((h) => h.id === host.id);
+      if (target) Object.assign(target, result.host);
     } catch (err) {
-      host.check = { reachable: false, error: err.message };
+      host.check = { reachable: false, error: err.message, at: new Date().toISOString() };
     }
     renderHosts();
   }
-  toast("体检完成", "info");
+  toast("检查完成", "info");
 }
 
 // ---------- 绑定 ----------
@@ -917,7 +938,7 @@ function bind() {
   $("#modal-ok").addEventListener("click", submitModal);
 
   $("#btn-update-all").addEventListener("click", () => confirmUpdate(state.hosts));
-  $("#btn-check-all").addEventListener("click", checkAll);
+  $("#btn-refresh").addEventListener("click", refreshAll);
   $("#btn-abort").addEventListener("click", async () => {
     if (!state.active) return;
     if (!confirm("中止任务？正在跑的脚本会被杀掉。")) return;

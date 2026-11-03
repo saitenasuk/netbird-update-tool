@@ -334,7 +334,7 @@ p {
   grid-template-columns: 3px 1fr auto;
   gap: var(--s-4);
   align-items: center;
-  padding: var(--s-4) var(--s-5) var(--s-4) 0;
+  padding: var(--s-4) 0;
   border-bottom: 1px solid var(--border);
   transition: background 0.14s ease;
 }
@@ -954,13 +954,13 @@ body[data-drawer="open"] .drawer {
   /* 窄屏：行内按钮让位给整行可点，版本信息换行 */
   .host {
     grid-template-columns: 3px 1fr;
-    padding-right: var(--s-4);
+    padding-right: 0;
   }
 
   .host-right {
     grid-column: 2;
     justify-content: space-between;
-    padding: 0 0 0 var(--s-4);
+    padding: 0 var(--s-4) 0 var(--s-4);
     margin-top: var(--s-2);
   }
 

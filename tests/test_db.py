@@ -167,6 +167,22 @@ class SudoColumnTest(unittest.TestCase):
         self.assertFalse(host["sudo"], "老数据默认不带 sudo")
         self.assertIn("sudo", {r[1] for r in store.conn.execute("PRAGMA table_info(hosts)")})
 
+    def test_check_result_persists(self):
+        store = Store(self.path)
+        payload = {
+            "name": "h1",
+            "address": "10.0.0.3",
+            "key_name": None,
+            "scripts": "/root/x.sh | 更新 |",
+        }
+        payload["scripts_parsed"] = parse_scripts(payload["scripts"])
+        host_id = store.create_host(payload)
+        self.assertEqual(store.get_host(host_id)["check"], {})
+
+        store.set_check(host_id, {"at": "2026-11-03T20:00:00+08:00", "reachable": True, "version": "0.67.0"})
+        store2 = Store(self.path)  # 重新打开，模拟进程重启
+        self.assertEqual(store2.get_host(host_id)["check"]["version"], "0.67.0")
+
     def test_sudo_roundtrip(self):
         store = Store(self.path)
         payload = {
