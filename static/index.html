@@ -125,14 +125,11 @@
             <input class="input" id="f-user" value="root" />
           </div>
           <div class="field">
-            <label>分组</label>
-            <div class="segmented" id="f-group">
-              <label><input type="radio" name="f-group" value="console" /><span>控制台</span></label>
-              <label><input type="radio" name="f-group" value="clients" checked /><span>客户端</span></label>
-            </div>
+            <label for="f-priority">优先级</label>
+            <input class="input" id="f-priority" type="number" value="10" min="-999" max="999" />
           </div>
         </div>
-        <span class="hint" id="group-hint">客户端逐台更新，一台失败不影响其他机器。</span>
+        <span class="hint">数字小的先执行（比如 1、2、3）；本机永远排最后，同优先级按添加顺序。</span>
 
         <div class="field">
           <label for="f-key">密钥</label>
@@ -154,7 +151,7 @@
           <button class="btn btn-ghost btn-sm script-add" id="btn-add-script" type="button">+ 添加脚本</button>
           <span class="hint">
             填目标机上<b>已经存在</b>的脚本绝对路径，工具只负责触发，不上传文件。从上到下依次执行。<br />
-            标成「更新控制台」的脚本会自动带上 管理后台 / 前端 UI / 信号 / 中继 四个组件，更新时弹勾选框。
+            参数原样传给脚本（按空格拆分，支持引号），不需要就留空。升级逻辑全在脚本里。
           </span>
         </div>
 

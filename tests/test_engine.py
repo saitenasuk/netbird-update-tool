@@ -13,11 +13,11 @@ from nbtool.engine import Engine, Settings, parse_netbird_version  # noqa: E402
 from nbtool.transport import FakeTransport, Result  # noqa: E402
 
 
-def mkhost(host_id, name, group="clients", self_host=False, detach=False, address="10.0.0.1"):
+def mkhost(host_id, name, priority=10, self_host=False, detach=False, address="10.0.0.1"):
     return {
         "id": host_id,
         "name": name,
-        "group_name": group,
+        "priority": priority,
         "address": address,
         "ssh_user": "root",
         "ssh_port": 22,
@@ -93,52 +93,49 @@ class SudoTransportTest(unittest.TestCase):
 
 
 class EngineOrderTest(unittest.TestCase):
-    def test_console_first_then_clients_self_last(self):
+    def test_priority_order_and_self_host_last(self):
         engine = Engine(FakeTransport())
         hosts = [
-            mkhost(5, "c-late", "clients"),
-            mkhost(1, "console", "console"),
-            mkhost(6, "c-self", "clients", self_host=True),
-            mkhost(2, "c-early", "clients"),
+            mkhost(5, "p9", priority=9),
+            mkhost(1, "p1", priority=1),
+            mkhost(6, "self", priority=1, self_host=True),
+            mkhost(2, "p2", priority=2),
         ]
         ordered = [h["name"] for h in engine.order(hosts)]
-        self.assertEqual(ordered, ["console", "c-early", "c-late", "c-self"])
+        self.assertEqual(ordered, ["p1", "p2", "p9", "self"])
         self.assertEqual([h["name"] for h in engine.order(hosts)], ordered, "排序应稳定")
 
 
-class EngineGatingTest(unittest.TestCase):
-    def test_console_failure_aborts_rest(self):
+class EngineFailurePolicyTest(unittest.TestCase):
+    def _targets(self):
+        return [
+            {"host": mkhost(1, "a", priority=1), "scripts": [mkscript("/bin/false")]},
+            {"host": mkhost(2, "b", priority=2), "scripts": [mkscript("/bin/true")]},
+        ]
+
+    def _fake(self):
         fake = FakeTransport(base_responses(ok_scripts=["/bin/true"], fail_scripts=["/bin/false"]))
         fake.responses[("test", "-x", "/bin/false")] = Result(0)
         fake.responses[("test", "-x", "/bin/true")] = Result(0)
+        return fake
+
+    def test_continues_by_default(self):
+        fake = self._fake()
         engine = Engine(fake, sleep=lambda _s: None)
-        targets = [
-            {"host": mkhost(1, "console", "console"), "scripts": [mkscript("/bin/false")]},
-            {"host": mkhost(2, "client", "clients"), "scripts": [mkscript("/bin/true")]},
-        ]
         lines = []
-        result = engine.run(targets, lambda h, t, k="info": lines.append((h, t, k)))
-
-        self.assertEqual(result["status"], "aborted")
-        self.assertEqual(len(result["hosts"]), 1, "控制台失败后不应再处理客户端")
-        self.assertEqual(result["hosts"][0]["status"], "failed")
-        self.assertFalse(fake.called("/bin/true"), "客户端的脚本绝不能被调用")
-        self.assertTrue(any("任务中止" in t for _h, t, _k in lines))
-
-    def test_client_failure_does_not_stop_others(self):
-        fake = FakeTransport(base_responses(ok_scripts=["/bin/true"], fail_scripts=["/bin/false"]))
-        fake.responses[("test", "-x", "/bin/true")] = Result(0)
-        fake.responses[("test", "-x", "/bin/false")] = Result(0)
-        engine = Engine(fake, sleep=lambda _s: None)
-        targets = [
-            {"host": mkhost(1, "a", "clients"), "scripts": [mkscript("/bin/false")]},
-            {"host": mkhost(2, "b", "clients"), "scripts": [mkscript("/bin/true")]},
-        ]
-        result = engine.run(targets, lambda *a, **k: None)
-
+        result = engine.run(self._targets(), lambda h, t, k="info": lines.append(t))
         self.assertEqual(result["status"], "failed")
         self.assertEqual([h["status"] for h in result["hosts"]], ["failed", "ok"])
-        self.assertTrue(fake.called("/bin/true"))
+        self.assertTrue(fake.called("/bin/true"), "默认应该继续跑完剩下的机器")
+        self.assertTrue(any("失败 1 台" in t for t in lines), "结束时汇总失败机器")
+
+    def test_stop_on_failure(self):
+        fake = self._fake()
+        engine = Engine(fake, sleep=lambda _s: None)
+        result = engine.run(self._targets(), lambda *a, **k: None, stop_on_failure=True)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(len(result["hosts"]), 1)
+        self.assertFalse(fake.called("/bin/true"), "勾了遇错即停就不该再跑后面的")
 
 
 class EnginePreflightTest(unittest.TestCase):

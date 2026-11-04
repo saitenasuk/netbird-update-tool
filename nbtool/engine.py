@@ -1,8 +1,7 @@
 """任务编排：顺序、门禁、前置检查、detach 等待、版本对比。
 
-失败语义（对应原 Ansible 方案）：
-  - group_order 里第一个分组（默认 console）任一台失败 → 整个任务立即中止
-  - 其余分组某台失败 → 记录后继续下一台
+失败语义：默认「跑完所有机器」，失败的那台标红，最后汇总；需要时可用
+stop_on_failure=True 改成遇错即停。
 """
 
 from __future__ import annotations
@@ -37,7 +36,6 @@ def parse_netbird_version(text: str) -> str | None:
 
 @dataclass
 class Settings:
-    group_order: list[str] = field(default_factory=lambda: ["console", "clients"])
     script_timeout: int = 1800
     detach_wait_timeout: int = 900
     detach_poll_timeout: int = 600
@@ -57,15 +55,12 @@ class Engine:
     # ---------- 排序 ----------
 
     def order(self, hosts: list[dict]) -> list[dict]:
-        """console 组先、clients 组后；组内按 sort_order；self_host 永远最后。"""
-        order = self.s.group_order
+        """优先级数字小的先跑；本机永远排最后；同优先级按 sort_order、id。"""
 
         def rank(host: dict):
-            group = host.get("group_name") or "clients"
-            gi = order.index(group) if group in order else len(order)
             return (
-                gi,
-                1 if host.get("self_host") else 0,
+                1 if host.get("self_host") else 0,  # 更新自己会断自己的网，永远压到最后
+                int(host.get("priority") if host.get("priority") is not None else 10),
                 int(host.get("sort_order") or 0),
                 int(host["id"]),
             )
@@ -74,11 +69,20 @@ class Engine:
 
     # ---------- 执行 ----------
 
-    def run(self, targets: list[dict], emit, is_aborted=lambda: False) -> dict:
+    def run(
+        self,
+        targets: list[dict],
+        emit,
+        is_aborted=lambda: False,
+        stop_on_failure: bool = False,
+    ) -> dict:
         results: list[dict] = []
         aborted = False
+        stopped = False
         total = len(targets)
-        emit("", f"任务开始 · {total} 台目标 · 顺序 {' → '.join(self.s.group_order)}", "dim")
+        names = " → ".join(t["host"]["name"] for t in targets[:6])
+        more = " …" if total > 6 else ""
+        emit("", f"任务开始 · {total} 台目标 · 顺序 {names}{more}", "dim")
 
         for index, target in enumerate(targets, 1):
             host = target["host"]
@@ -89,16 +93,14 @@ class Engine:
             emit("", f"──── {index}/{total} {host['name']} ────", "dim")
             result = self._run_host(host, target["scripts"], emit, is_aborted)
             results.append(result)
-            if result["status"] != "ok":
-                first_group = self.s.group_order[0] if self.s.group_order else None
-                if first_group and (host.get("group_name") or "") == first_group:
-                    emit(
-                        host["name"],
-                        f"{host['name']} 属于优先分组 {first_group}，任务中止，其余机器未执行",
-                        "err",
-                    )
-                    aborted = True
-                    break
+            if result["status"] != "ok" and stop_on_failure:
+                emit(
+                    host["name"],
+                    f"{host['name']} 失败，已按设置中止后续机器（还剩 {total - index} 台）",
+                    "err",
+                )
+                stopped = True
+                break
             if is_aborted():
                 aborted = True
                 break
@@ -109,7 +111,14 @@ class Engine:
             status = "failed"
         else:
             status = "success"
-        emit("", f"任务结束 · {status} · {len(results)}/{total} 台已处理", "ok" if status == "success" else "err")
+        if stopped:
+            emit("", f"任务中止 · {len(results)}/{total} 台已处理", "err")
+        else:
+            failed = [r["name"] for r in results if r["status"] != "ok"]
+            summary = f"任务结束 · {len(results)}/{total} 台已处理"
+            if failed:
+                summary += f" · 失败 {len(failed)} 台：{', '.join(failed)}"
+            emit("", summary, "ok" if not failed else "err")
         return {"status": status, "hosts": results}
 
     def _run_host(self, host, scripts, emit, is_aborted) -> dict:
@@ -118,7 +127,7 @@ class Engine:
         result = {
             "host_id": host.get("id"),
             "name": name,
-            "group": host.get("group_name"),
+            "priority": host.get("priority"),
             "status": "ok",
             "error": "",
             "version_before": None,

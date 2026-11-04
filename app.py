@@ -40,8 +40,8 @@ def seed_if_empty(store: Store, keys: KeyStore, path: Path) -> None:
         if isinstance(scripts, list) and scripts and isinstance(scripts[0], dict):
             lines = []
             for script in scripts:
-                options = ",".join(script.get("options") or [])
-                lines.append(f"{script['path']} | {script.get('label') or ''} | {options}")
+                args = " ".join(script.get("args") or [])
+                lines.append(f"{script['path']} | {script.get('label') or ''} | {args}")
             payload["scripts"] = "\n".join(lines)
         try:
             store.create_host(payload)

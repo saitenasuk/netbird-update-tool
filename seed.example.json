@@ -1,33 +1,58 @@
 {
-  "_comment": "库为空时若存在 data/seed.json 会导入。scripts 可以是多行文本，也可以是对象数组。",
+  "_comment": "库为空时若存在 data/seed.json 会导入。scripts 可以是多行文本，也可以是对象数组。priority 越小越先执行。",
   "hosts": [
     {
       "name": "aliyun-console",
       "address": "47.0.0.1",
       "ssh_user": "root",
       "ssh_port": 22,
+      "priority": 1,
       "key_name": "nbtool-ed25519",
-      "group_name": "console",
-      "detach": false,
-      "self_host": false,
       "scripts": [
         {
           "path": "/root/netbird/update-console.sh",
           "label": "更新控制台",
-          "options": ["management", "dashboard", "signal", "relay"]
+          "args": [
+            "management",
+            "dashboard",
+            "signal",
+            "relay"
+          ]
         },
-        { "path": "/root/netbird/update-client.sh", "label": "更新客户端" }
+        {
+          "path": "/root/netbird/update-client.sh",
+          "label": "更新客户端"
+        }
       ]
     },
     {
       "name": "client-subnet",
       "address": "192.168.1.30",
       "ssh_user": "root",
+      "priority": 2,
       "key_name": "nbtool-ed25519",
-      "group_name": "clients",
       "detach": true,
       "detach_log": "/var/log/netbird-upgrade.log",
-      "scripts": [{ "path": "/root/netbird-upgrade.sh", "label": "更新客户端（后台执行）" }]
+      "scripts": [
+        {
+          "path": "/root/netbird-upgrade.sh",
+          "label": "更新客户端（后台执行）"
+        }
+      ]
+    },
+    {
+      "name": "oci-ubuntu",
+      "address": "10.0.0.8",
+      "ssh_user": "ubuntu",
+      "priority": 3,
+      "sudo": true,
+      "key_name": "nbtool-ed25519",
+      "scripts": [
+        {
+          "path": "/root/netbird/update-client.sh",
+          "label": "更新客户端"
+        }
+      ]
     }
   ]
 }

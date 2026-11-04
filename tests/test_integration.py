@@ -18,7 +18,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from nbtool.transport import SshTransport  # noqa: E402
 
 SSHD_DIR = Path("/tmp/sshd")
-READY = (SSHD_DIR / "client_key").is_file() and os.environ.get("NB_SKIP_SSH_TEST") != "1"
+
+
+def _sshd_ready() -> bool:
+    if os.environ.get("NB_SKIP_SSH_TEST") == "1" or not (SSHD_DIR / "client_key").is_file():
+        return False
+    import socket
+
+    try:
+        with socket.create_connection(("127.0.0.1", 2222), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+READY = _sshd_ready()
 
 
 @unittest.skipUnless(READY, "需要 /tmp/sshd/client_key 与 127.0.0.1:2222 的 sshd")

@@ -14,9 +14,9 @@ from nbtool.db import Store, ValidationError, parse_scripts  # noqa: E402
 
 
 class ParseScriptsTest(unittest.TestCase):
-    def test_parses_path_label_options(self):
+    def test_parses_command_label_args(self):
         scripts = parse_scripts(
-            "/root/a.sh | 更新控制台 | management,dashboard\n"
+            "/root/a.sh | 更新控制台 | management dashboard\n"
             "# 注释行\n"
             "\n"
             "/root/b.sh\n"
@@ -24,17 +24,21 @@ class ParseScriptsTest(unittest.TestCase):
         self.assertEqual(len(scripts), 2)
         self.assertEqual(scripts[0]["path"], "/root/a.sh")
         self.assertEqual(scripts[0]["label"], "更新控制台")
-        self.assertEqual(scripts[0]["options"], ["management", "dashboard"])
+        self.assertEqual(scripts[0]["args"], ["management", "dashboard"])
         self.assertEqual(scripts[1]["label"], "b.sh", "没写显示名就用文件名")
-        self.assertEqual(scripts[1]["options"], [])
+        self.assertEqual(scripts[1]["args"], [])
+
+    def test_args_support_quotes(self):
+        scripts = parse_scripts('/root/a.sh | x | --tag "v1 2" --force')
+        self.assertEqual(scripts[0]["args"], ["--tag", "v1 2", "--force"])
 
     def test_requires_absolute_path(self):
         with self.assertRaises(ValidationError):
             parse_scripts("relative.sh")
 
-    def test_rejects_bad_option_name(self):
+    def test_rejects_unbalanced_quotes(self):
         with self.assertRaises(ValidationError):
-            parse_scripts("/root/a.sh | x | bad option")
+            parse_scripts('/root/a.sh | x | "unterminated')
 
     def test_rejects_empty(self):
         with self.assertRaises(ValidationError):
@@ -52,7 +56,7 @@ class StoreTest(unittest.TestCase):
             "ssh_port": 22,
             "group_name": "console",
             "key_name": None,
-            "scripts": "/root/a.sh | 控制台 | management,dashboard\n/root/b.sh | 客户端 |",
+            "scripts": "/root/a.sh | 控制台 | management dashboard\n/root/b.sh | 客户端 |",
             "detach": False,
             "detach_log": "/var/log/x.log",
             "self_host": False,
@@ -72,7 +76,7 @@ class StoreTest(unittest.TestCase):
         host = self.store.get_host(host_id)
         self.assertEqual(host["name"], "aliyun")
         self.assertEqual(len(host["scripts"]), 2)
-        self.assertEqual(host["scripts"][0]["options"], ["management", "dashboard"])
+        self.assertEqual(host["scripts"][0]["args"], ["management", "dashboard"])
 
     def test_duplicate_name_rejected(self):
         self._create()

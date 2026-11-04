@@ -95,7 +95,7 @@ class WebTest(unittest.TestCase):
         status, data = self.json_request("GET", "/api/state")
         self.assertEqual(status, 200)
         self.assertIn("hosts", data)
-        self.assertEqual(data["group_order"], ["console", "clients"])
+        self.assertEqual(data["defaults"]["script_timeout"], 1800)
 
     # ---------- 机器 CRUD ----------
 
@@ -111,12 +111,12 @@ class WebTest(unittest.TestCase):
             "ssh_user": "root",
             "ssh_port": 22,
             "group_name": "clients",
-            "scripts": "/root/up.sh | 更新 | a,b",
+            "scripts": "/root/up.sh | 更新 | a b",
         }
         status, host = self.json_request("POST", "/api/hosts", good)
         self.assertEqual(status, 201)
         self.assertEqual(host["name"], "unit-host")
-        self.assertEqual(host["scripts"][0]["options"], ["a", "b"])
+        self.assertEqual(host["scripts"][0]["args"], ["a", "b"])
         self.assertIn("addr", host)
 
         status, hosts = self.json_request("GET", "/api/hosts")
@@ -151,20 +151,15 @@ class WebTest(unittest.TestCase):
 
     # ---------- 任务 ----------
 
-    def test_job_rejects_unknown_args(self):
-        payload = {"name": "arg-host", "address": "10.0.0.7", "scripts": "/root/up.sh | 更新 | a,b"}
+    def test_job_uses_script_args_from_config(self):
+        payload = {"name": "arg-host", "address": "10.0.0.7", "scripts": "/root/up.sh | 更新 | zzz"}
         _, host = self.json_request("POST", "/api/hosts", payload)
-        script_id = host["scripts"][0]["id"]
-        status, data = self.json_request(
-            "POST",
-            "/api/jobs",
-            {"targets": [{"host_id": host["id"], "args": {str(script_id): ["zzz"]}}]},
-        )
-        self.assertEqual(status, 400)
-        self.assertIn("不接受参数", data["error"])
+        status, job = self.json_request("POST", "/api/jobs", {"targets": [{"host_id": host["id"]}]})
+        self.assertEqual(status, 202)
+        self.assertEqual(job["spec"]["targets"][0]["scripts"][0]["args"], ["zzz"])
 
     def test_job_runs_and_streams(self):
-        payload = {"name": "run-host", "address": "10.0.0.8", "scripts": "/root/up.sh | 更新 | a,b"}
+        payload = {"name": "run-host", "address": "10.0.0.8", "scripts": "/root/up.sh | 更新 | a b"}
         _, host = self.json_request("POST", "/api/hosts", payload)
         status, job = self.json_request("POST", "/api/jobs", {"targets": [{"host_id": host["id"]}]})
         self.assertEqual(status, 202)

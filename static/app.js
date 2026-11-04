@@ -113,7 +113,11 @@ function renderHosts() {
 
   for (const host of state.hosts) {
     const chips = [
-      el("span", { class: "chip chip-muted", text: host.group_name === "console" ? "控制台" : "客户端" }),
+      el("span", {
+        class: "chip chip-muted",
+        text: `P${host.priority ?? 10}`,
+        title: `优先级 ${host.priority ?? 10}，数字小的先执行`,
+      }),
     ];
     if (host.detach) chips.push(el("span", { class: "chip chip-warning" }, el("i", { class: "chip-dot" }), "子网代理"));
     if (host.self_host) chips.push(el("span", { class: "chip chip-muted", text: "本机" }));
@@ -351,30 +355,16 @@ async function loadLog(jobId) {
 
 // ---------- 更新流程 ----------
 
-function optionGroups(hosts) {
-  const groups = [];
-  const seen = new Set();
-  for (const host of hosts) {
-    for (const script of host.scripts) {
-      if (!script.options.length || seen.has(script.id)) continue;
-      seen.add(script.id);
-      groups.push({ host, script });
-    }
-  }
-  return groups;
-}
-
 function confirmUpdate(hosts) {
   if (!hosts.length) return;
   const ordered = [...hosts];
-  const groups = optionGroups(ordered);
 
   const body = el("div", { style: "display:flex;flex-direction:column;gap:16px" });
   body.append(
     el(
       "div",
       {},
-      el("div", { class: "opt-label", text: "执行顺序" }),
+      el("div", { class: "opt-label", text: "执行顺序（优先级小的先跑，本机排最后）" }),
       el(
         "ul",
         { class: "target-list" },
@@ -384,6 +374,7 @@ function confirmUpdate(hosts) {
             {},
             el("span", { class: "idx", text: String(i + 1) }),
             el("span", { text: h.name }),
+            el("span", { class: "chip chip-muted", text: `P${h.priority ?? 10}` }),
             h.detach ? el("span", { class: "chip chip-warning" }, "后台执行") : null,
             h.self_host ? el("span", { class: "chip chip-muted" }, "最后执行") : null,
           ),
@@ -392,38 +383,29 @@ function confirmUpdate(hosts) {
     ),
   );
 
-  const inputs = [];
-  for (const { host, script } of groups) {
-    const grid = el("div", { class: "opt-grid" });
-    const boxes = [];
-    for (const opt of script.options) {
-      const box = el("input", { type: "checkbox", value: opt, checked: true });
-      boxes.push(box);
-      grid.append(el("label", { class: "opt" }, box, opt));
-    }
-    inputs.push({ host, script, boxes });
-    body.append(el("div", {}, el("div", { class: "opt-label", text: `${host.name} · ${script.label}` }), grid));
-  }
+  const keepGoing = el("input", { type: "checkbox", id: "opt-keepgoing", checked: true });
+  body.append(
+    el(
+      "label",
+      { class: "opt", for: "opt-keepgoing" },
+      keepGoing,
+      el("span", {}, "某台失败后继续更新其余机器 ", el("span", { class: "muted", text: "（取消勾选则遇错即停）" })),
+    ),
+  );
 
   openModal({
     title: "确认更新",
-    desc: `${ordered.length} 台机器 · 控制台分组优先，失败即中止，其后逐台执行`,
+    desc: `${ordered.length} 台机器 · 逐台执行`,
     body,
     okText: "开始更新",
     onSubmit: async () => {
-      const targets = ordered.map((host) => {
-        const args = {};
-        for (const item of inputs.filter((i) => i.host.id === host.id)) {
-          const chosen = item.boxes.filter((b) => b.checked).map((b) => b.value);
-          if (chosen.length !== item.script.options.length) args[item.script.id] = chosen;
-        }
-        return Object.keys(args).length ? { host_id: host.id, args } : { host_id: host.id };
-      });
+      const targets = ordered.map((host) => ({ host_id: host.id }));
       const job = await api("/api/jobs", {
         method: "POST",
         body: JSON.stringify({
           targets,
           label: ordered.length > 1 ? "全量更新" : `更新 ${ordered[0].name}`,
+          stop_on_failure: !keepGoing.checked,
         }),
       });
       state.active = job;
@@ -438,13 +420,6 @@ function confirmUpdate(hosts) {
     },
   });
 }
-
-
-// 控制台脚本支持的组件：不再让用户手填，按脚本角色自动带上
-const CONSOLE_COMPONENTS = ["management", "dashboard", "signal", "relay"];
-const ROLE_CONSOLE = "更新控制台";
-const ROLE_CLIENT = "更新客户端";
-const ROLE_LABELS = [ROLE_CONSOLE, ROLE_CLIENT];
 
 // ---------- 脚本行编辑器 ----------
 
@@ -475,33 +450,12 @@ function scriptField(text, hint, input, wide = false, extraClass = "") {
   );
 }
 
-let roleGroupSeq = 0;
-
-function rolePicker(role) {
-  // 同一行两个单选框必须共用同一个 name 才会互斥；不同行之间又必须不同，
-  // 所以按行生成一次组名，放进循环里就会变成两个独立的组（那就是 bug）。
-  const groupName = `role-group-${++roleGroupSeq}`;
-  const box = el("div", { class: "segmented segmented-sm", "data-f": "role" });
-  for (const label of ROLE_LABELS) {
-    box.append(
-      el(
-        "label",
-        {},
-        el("input", { type: "radio", name: groupName, value: label, checked: label === role }),
-        el("span", { text: label.replace("更新", "") }),
-      ),
-    );
-  }
-  return box;
-}
-
 function scriptRow(data = {}) {
-  const role = data.label && ROLE_LABELS.includes(data.label) ? data.label : ROLE_CLIENT;
-  const row = el(
+  return el(
     "div",
     { class: "script-row" },
     scriptField(
-      "脚本路径",
+      "命令",
       "目标机上已存在，不会上传",
       el("input", {
         class: "input mono",
@@ -512,7 +466,17 @@ function scriptRow(data = {}) {
       }),
       true,
     ),
-    scriptField("这条脚本是", role === ROLE_CONSOLE ? "会带 4 个组件" : "不带组件", rolePicker(role), false, "script-field-role"),
+    scriptField(
+      "参数",
+      "可留空，按空格拆分",
+      el("input", {
+        class: "input mono",
+        "data-f": "args",
+        placeholder: "可留空",
+        value: (data.args || []).join(" "),
+        spellcheck: "false",
+      }),
+    ),
     el(
       "div",
       { class: "script-tools" },
@@ -521,7 +485,6 @@ function scriptRow(data = {}) {
       el("button", { class: "btn", "data-act": "del", type: "button", title: "删除", text: "×" }),
     ),
   );
-  return row;
 }
 
 function renderScriptRows(scripts) {
@@ -547,26 +510,10 @@ function collectScripts() {
   for (const row of rows) {
     const path = row.querySelector('[data-f="path"]').value.trim();
     if (!path) continue;
-    const role = row.querySelector('input[name^="role-"]:checked')?.value || ROLE_CLIENT;
-    const options = role === ROLE_CONSOLE ? CONSOLE_COMPONENTS.join(",") : "";
-    lines.push(`${path} | ${role} | ${options}`);
+    const args = row.querySelector('[data-f="args"]').value.trim();
+    lines.push(`${path} |  | ${args}`);
   }
   return lines.join("\n");
-}
-
-function refreshRowHint(row) {
-  // 只改角色那一格的小字，别把「脚本路径」那一格的说明盖掉
-  const hint = row.querySelector(".script-field-role .script-label-hint");
-  if (hint) hint.textContent = rowRole(row) === ROLE_CONSOLE ? "会带 4 个组件" : "不带组件";
-}
-
-function rowRole(row) {
-  return row.querySelector('input[name^="role-"]:checked')?.value || ROLE_CLIENT;
-}
-
-function setRowRole(row, role) {
-  const input = [...row.querySelectorAll('input[name^="role-"]')].find((i) => i.value === role);
-  if (input) input.checked = true;
 }
 
 // ---------- 抽屉 ----------
@@ -587,22 +534,11 @@ function fillKeys(selected) {
   );
 }
 
-function getGroup() {
-  return document.querySelector('#f-group input:checked')?.value || "clients";
-}
-
-function setGroup(value) {
-  const inputs = [...document.querySelectorAll("#f-group input")];
-  const target = inputs.find((i) => i.value === value) || inputs.find((i) => i.value === "clients");
-  if (target) target.checked = true;
-  updateGroupHint();
-}
-
-function updateGroupHint() {
-  $("#group-hint").textContent =
-    getGroup() === "console"
-      ? "控制台会先更新，它失败就中止整个任务，后面的机器都不动。"
-      : "客户端逐台更新，一台失败不影响其他机器。";
+function getPriority() {
+  const raw = $("#f-priority").value.trim();
+  if (raw === "") return 10;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.trunc(value) : 10;
 }
 
 function updateBootstrap() {
@@ -633,7 +569,7 @@ function openDrawer(host = null) {
   $("#f-addr").value = host?.address || "";
   $("#f-port").value = host?.ssh_port || 22;
   $("#f-user").value = host?.ssh_user || "root";
-  setGroup(host?.group_name || "clients");
+  $("#f-priority").value = host?.priority ?? 10;
   renderScriptRows(host ? host.scripts : []);
   $("#f-detach").checked = !!host?.detach;
   $("#f-detach-log").value = host?.detach_log || "/var/log/netbird-upgrade.log";
@@ -664,7 +600,7 @@ function formPayload() {
     address: $("#f-addr").value.trim(),
     ssh_port: Number($("#f-port").value) || 22,
     ssh_user: $("#f-user").value.trim() || "root",
-    group_name: getGroup(),
+    priority: getPriority(),
     key_name: $("#f-key").value,
     scripts: collectScripts(),
     detach: $("#f-detach").checked,
@@ -885,26 +821,10 @@ function bind() {
   $("#f-key").addEventListener("change", updateBootstrap);
   $("#f-addr").addEventListener("input", updateBootstrap);
   $("#f-user").addEventListener("input", updateBootstrap);
-  $("#f-group").addEventListener("change", () => {
-    updateGroupHint();
-    const rows = [...document.querySelectorAll("#script-rows .script-row")];
-    if (getGroup() === "console" && rows.length && !rows.some((r) => rowRole(r) === ROLE_CONSOLE)) {
-      setRowRole(rows[0], ROLE_CONSOLE);
-      refreshRowHint(rows[0]);
-    }
-  });
-
   $("#btn-add-script").addEventListener("click", () => {
-    const rows = [...document.querySelectorAll("#script-rows .script-row")];
-    const role = getGroup() === "console" && !rows.some((r) => rowRole(r) === ROLE_CONSOLE) ? ROLE_CONSOLE : ROLE_CLIENT;
-    $("#script-rows").append(scriptRow({ label: role }));
+    $("#script-rows").append(scriptRow({}));
     refreshScriptTools();
     $("#script-rows").lastElementChild.querySelector('[data-f="path"]').focus();
-  });
-
-  $("#script-rows").addEventListener("change", (event) => {
-    const row = event.target.closest(".script-row");
-    if (row && event.target.name?.startsWith("role-")) refreshRowHint(row);
   });
 
   $("#script-rows").addEventListener("click", (event) => {

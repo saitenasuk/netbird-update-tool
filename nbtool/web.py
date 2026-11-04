@@ -71,7 +71,7 @@ class App:
             "keys": self.keys.list(),
             "jobs": self.store.list_jobs(20),
             "active": active.to_dict() if active else None,
-            "group_order": self.engine.s.group_order,
+            "defaults": {"script_timeout": self.engine.s.script_timeout},
             "server": {"python": os.sys.version.split()[0], "auth": bool(self.password)},
         }
 
@@ -137,21 +137,10 @@ class App:
             host = hosts.get(host_id)
             if host is None:
                 raise ValidationError(f"机器 {host_id} 不存在")
-            args_map = item.get("args") or {}
-            scripts = []
-            for script in host["scripts"]:
-                raw = args_map.get(str(script["id"]), args_map.get(script["id"]))
-                if raw is None:
-                    # 没传就按「全选」处理：带选项的脚本默认跑全部组件
-                    chosen = list(script["options"])
-                else:
-                    chosen = [str(a) for a in raw]
-                unknown = [a for a in chosen if a not in script["options"]]
-                if unknown:
-                    raise ValidationError(
-                        f"{host['name']} 的脚本 {script['path']} 不接受参数 {','.join(unknown)}"
-                    )
-                scripts.append({"path": script["path"], "args": chosen, "timeout": script.get("timeout")})
+            scripts = [
+                {"path": s["path"], "args": list(s.get("args") or []), "timeout": s.get("timeout")}
+                for s in host["scripts"]
+            ]
             targets.append({"host": host, "scripts": scripts})
         if not targets:
             raise ValidationError("没有选择任何机器")
@@ -159,15 +148,16 @@ class App:
         by_id = {t["host"]["id"]: t for t in targets}
         return [by_id[h["id"]] for h in ordered]
 
-    def start_job(self, requested: list[dict], label: str = "") -> dict:
+    def start_job(self, requested: list[dict], label: str = "", stop_on_failure: bool = False) -> dict:
         targets = self.build_targets(requested)
         spec = {
             "label": label,
+            "stop_on_failure": bool(stop_on_failure),
             "targets": [
                 {
                     "host_id": t["host"]["id"],
                     "name": t["host"]["name"],
-                    "group": t["host"].get("group_name"),
+                    "priority": t["host"].get("priority"),
                     "scripts": [{"path": s["path"], "args": s["args"]} for s in t["scripts"]],
                 }
                 for t in targets
@@ -177,7 +167,9 @@ class App:
         engine = self.engine
 
         def worker():
-            result = engine.run(targets, job.emit, job.is_aborted)
+            result = engine.run(
+                targets, job.emit, job.is_aborted, stop_on_failure=bool(stop_on_failure)
+            )
             # 任务里已经读到更新后的版本，直接回填，不用再 SSH 一次
             for item in result.get("hosts", []):
                 if item.get("status") == "ok" and item.get("version_after"):
@@ -311,7 +303,14 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/jobs" and method == "POST":
                 body = self._body()
-                return self._json(self.app.start_job(body.get("targets") or [], body.get("label") or ""), 202)
+                return self._json(
+                    self.app.start_job(
+                        body.get("targets") or [],
+                        body.get("label") or "",
+                        stop_on_failure=bool(body.get("stop_on_failure")),
+                    ),
+                    202,
+                )
             if path.startswith("/api/jobs/"):
                 return self._job_route(path, method)
 
