@@ -35,10 +35,25 @@ systemctl stop netbird || log "  服务本来就没运行，继续"
 
 # 3. 安装。失败时要把旧服务拉起来，别把机器留在断网状态。
 if sh "$TMP"; then
-    log "安装完成，重启服务"
-    if ! systemctl restart netbird; then
-        log "❌ 安装成功但重启失败，请手动检查 systemctl status netbird"
-        exit 1
+    log "安装完成"
+
+    # 官方安装脚本装完通常已经重启过服务（你观察到的行为）。
+    # 这里不盲目再重启一次，而是比对「运行中的守护进程版本」和「磁盘上的 CLI 版本」：
+    #   一致   → 已经是新二进制，跳过重启，少一次无谓断线
+    #   不一致 / 读不到（服务没起来、输出格式变了）→ 重启，保证跑的是新版本
+    CLI_VER=$(netbird version 2>/dev/null | tr -d '[:space:]' || true)
+    DAEMON_VER=$(netbird status --json 2>/dev/null \
+        | grep -o '"daemonVersion"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        | head -1 | sed -E 's/.*"([^"]*)"$/\1/' || true)
+
+    if [ -n "$DAEMON_VER" ] && [ "$DAEMON_VER" = "$CLI_VER" ]; then
+        log "守护进程已是新版本（$DAEMON_VER），跳过重启"
+    else
+        log "重启以加载新二进制（daemon=${DAEMON_VER:-读不到} cli=${CLI_VER:-读不到}）"
+        if ! systemctl restart netbird; then
+            log "❌ 安装成功但重启失败，请手动检查 systemctl status netbird"
+            exit 1
+        fi
     fi
 else
     log "❌ 安装失败，用旧版本把服务拉回来"
