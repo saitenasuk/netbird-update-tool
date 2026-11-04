@@ -167,6 +167,14 @@ function renderHosts() {
         version,
         el("button", {
           class: "btn btn-ghost btn-sm",
+          text: "编辑",
+          onclick: (e) => {
+            e.stopPropagation();
+            openDrawer(host);
+          },
+        }),
+        el("button", {
+          class: "btn btn-ghost btn-sm",
           text: "更新",
           disabled: !!state.active,
           onclick: (e) => {
