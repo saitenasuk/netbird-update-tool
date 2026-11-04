@@ -159,7 +159,7 @@
           <input type="checkbox" id="f-detach" />
           <span class="check-text">
             <strong>升级会断线，后台执行</strong>
-            <span>脚本自己 systemd-run 到后台，界面上会等它断开再回来，然后读版本</span>
+            <span>机器是通过 netbird 地址（100.x）连的，或脚本自己 systemd-run 到后台时勾上。工具会等连接恢复、后台任务结束，再读版本</span>
           </span>
         </label>
 
