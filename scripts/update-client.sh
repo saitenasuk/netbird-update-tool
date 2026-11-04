@@ -9,6 +9,11 @@ set -euo pipefail
 
 log() { echo "[$(date '+%F %T')] $*"; }
 
+# 缺依赖时给一句人话，别让 curl/systemctl 报一堆看不懂的错
+for cmd in systemctl curl; do
+    command -v "$cmd" >/dev/null 2>&1 || { log "❌ 未安装 $cmd"; exit 1; }
+done
+
 log "开始 NetBird 升级流程"
 BEFORE=$(netbird version 2>/dev/null || echo "未安装")
 log "当前版本: $BEFORE"
