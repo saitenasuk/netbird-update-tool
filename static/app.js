@@ -42,6 +42,10 @@ async function api(path, options = {}) {
   } catch {
     data = null;
   }
+  if (res.status === 401) {
+    location.href = "/login";
+    throw new Error("需要登录");
+  }
   if (!res.ok) throw new Error((data && data.error) || `请求失败 ${res.status}`);
   return data;
 }
@@ -261,7 +265,7 @@ function renderLogPlaceholder() {
   log.append(
     el(
       "li",
-      { style: "grid-template-columns:1fr" },
+      { class: "log-placeholder", style: "grid-template-columns:1fr" },
       el("span", { class: "dim", text: "还没有任务。点「全部更新」或某台机器的「更新」，日志会实时出现在这里。" }),
     ),
   );
@@ -294,6 +298,7 @@ function renderJobPanel() {
 
 function appendLine(entry) {
   const log = $("#log");
+  log.querySelector(".log-placeholder")?.remove();
   const cls = entry.kind === "ok" ? "ok" : entry.kind === "err" ? "err" : entry.kind === "dim" ? "dim" : "";
   const text = el("span", { class: cls, text: entry.text });
   const cell = el("span");
@@ -337,6 +342,12 @@ function attachJob(jobId, from = 0) {
     if (data.status !== "running") {
       src.close();
       state.stream = null;
+      const total = state.active?.spec?.targets?.length || 0;
+      // 最后一台不会有「开始处理下一台」的标记，进度条会停在"正在处理 X"，这里收尾
+      $("#job-progress").hidden = false;
+      $("#job-progress-text").textContent = total ? `${total} / ${total} 台 · 已完成` : "已完成";
+      $("#job-progress-fill").style.width = "100%";
+      $("#btn-clear-log").disabled = false;
       state.active = null;
       state.activeHostIds.clear();
       renderJobPanel();
@@ -349,6 +360,18 @@ function attachJob(jobId, from = 0) {
   });
 }
 
+function clearLog() {
+  if (state.stream || state.active) return; // 运行中不清
+  $("#log").textContent = "";
+  $("#job-progress").hidden = true;
+  $("#job-progress-fill").style.width = "0%";
+  $("#job-status").className = "chip chip-muted";
+  $("#job-status").innerHTML = '<i class="chip-dot"></i>空闲';
+  $("#job-foot-note").textContent = "日志会写到 data/jobs/";
+  $("#btn-clear-log").disabled = true;
+  renderLogPlaceholder();
+}
+
 async function loadLog(jobId) {
   $("#log").textContent = "";
   $("#job-progress").hidden = true;
@@ -359,6 +382,7 @@ async function loadLog(jobId) {
     if (m) appendLine({ t: m[1], host: m[2] || "", text: m[3], kind: "info" });
   }
   $("#job-foot-note").textContent = "这是历史日志";
+  $("#btn-clear-log").disabled = false;
 }
 
 // ---------- 更新流程 ----------
@@ -422,6 +446,7 @@ function confirmUpdate(hosts) {
       $("#job-progress").hidden = false;
       $("#job-progress-text").textContent = "准备中…";
       $("#job-progress-fill").style.width = "0%";
+      $("#btn-clear-log").disabled = true;
       renderJobPanel();
       renderHosts();
       attachJob(job.id, 0);
@@ -786,6 +811,7 @@ async function refresh() {
   state.keys = data.keys;
   state.jobs = data.jobs;
   state.active = data.active;
+  $("#btn-logout").hidden = !(data.server && data.server.auth);
   if (data.active && !state.stream) {
     state.activeHostIds = new Set((data.active.spec.targets || []).map((t) => t.host_id));
     $("#log").textContent = "";
@@ -867,6 +893,15 @@ function bind() {
 
   $("#btn-update-all").addEventListener("click", () => confirmUpdate(state.hosts));
   $("#btn-refresh").addEventListener("click", refreshAll);
+  $("#btn-clear-log").addEventListener("click", clearLog);
+  $("#btn-logout").addEventListener("click", async () => {
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch {
+      /* 忽略：跳转后由服务端判定 */
+    }
+    location.href = "/login";
+  });
   $("#btn-abort").addEventListener("click", async () => {
     if (!state.active) return;
     if (!confirm("中止任务？正在跑的脚本会被杀掉。")) return;

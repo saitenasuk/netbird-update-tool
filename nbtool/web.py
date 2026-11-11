@@ -9,6 +9,8 @@ from __future__ import annotations
 import base64
 import hmac
 import json
+import secrets
+import time
 import mimetypes
 import os
 import threading
@@ -45,6 +47,35 @@ class App:
         self.password = password
         self.auth_user = auth_user
         self.locals = netaddr.local_addresses()
+        self.sessions: dict[str, float] = {}
+        self.session_ttl = 12 * 3600
+        self._sessions_lock = threading.Lock()
+
+    # ---------- 会话 ----------
+
+    def create_session(self) -> str:
+        token = secrets.token_urlsafe(32)
+        with self._sessions_lock:
+            self.sessions[token] = time.time() + self.session_ttl
+        return token
+
+    def session_valid(self, token: str | None) -> bool:
+        if not token:
+            return False
+        with self._sessions_lock:
+            expires = self.sessions.get(token)
+            if not expires:
+                return False
+            if expires < time.time():
+                self.sessions.pop(token, None)
+                return False
+            return True
+
+    def drop_session(self, token: str | None) -> None:
+        if not token:
+            return
+        with self._sessions_lock:
+            self.sessions.pop(token, None)
 
     # ---------- 数据成形 ----------
 
@@ -205,10 +236,32 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # 静音默认访问日志，出错时另有输出
         pass
 
+    SESSION_COOKIE = "nbtool_session"
+
+    def _session_token(self) -> str | None:
+        raw = self.headers.get("Cookie", "")
+        for part in raw.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == self.SESSION_COOKIE:
+                return value
+        return None
+
+    def _password_ok(self, user: str, password: str) -> bool:
+        app = self.app
+        if not app.password:
+            return True
+        # compare_digest 对非 ASCII 的 str 会抛 TypeError，密码可能是中文，所以比 bytes
+        return hmac.compare_digest(user.encode("utf-8"), app.auth_user.encode("utf-8")) and hmac.compare_digest(
+            password.encode("utf-8"), app.password.encode("utf-8")
+        )
+
     def _authorized(self) -> bool:
         app = self.app
         if not app.password:
             return True
+        if app.session_valid(self._session_token()):
+            return True
+        # 保留 Basic：命令行 / 脚本调 API 时不用先登录拿 cookie
         header = self.headers.get("Authorization", "")
         if not header.startswith("Basic "):
             return False
@@ -217,10 +270,7 @@ class Handler(BaseHTTPRequestHandler):
             user, _, password = raw.partition(":")
         except Exception:
             return False
-        # compare_digest 对非 ASCII 的 str 会抛 TypeError，密码可能是中文，所以比 bytes
-        return hmac.compare_digest(user.encode("utf-8"), app.auth_user.encode("utf-8")) and hmac.compare_digest(
-            password.encode("utf-8"), app.password.encode("utf-8")
-        )
+        return self._password_ok(user, password)
 
     def _send(self, status: int, body: bytes, ctype: str = "application/json; charset=utf-8", extra=None):
         self.send_response(status)
@@ -233,8 +283,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
-    def _json(self, data, status: int = 200):
-        self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"))
+    def _json(self, data, status: int = 200, extra=None):
+        self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"), extra=extra)
 
     def _error(self, status: int, message: str):
         self._json({"error": message}, status)
@@ -266,20 +316,33 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self._route("GET")
 
+    # 登录页要用的静态资源，未登录也能拿
+    PUBLIC_PATHS = {"/login", "/login.js", "/style.css", "/healthz"}
+
     def _route(self, method: str):
         path = urlparse(self.path).path
-        if path == "/healthz":  # 健康检查不需要认证
+
+        if path == "/healthz":
             return self._json({"ok": True})
+        if path == "/api/login" and method == "POST":
+            return self._login()
+        if path == "/api/logout" and method == "POST":
+            return self._logout()
+        if path in self.PUBLIC_PATHS and method == "GET":
+            return self._static(path)
+
         try:
             authorized = self._authorized()
         except Exception:  # 认证环节自身出错也只能当成未认证，不能把连接直接掐掉
             authorized = False
         if not authorized:
-            self._send(
-                401,
-                '{"error":"需要认证"}'.encode("utf-8"),
-                extra={"WWW-Authenticate": 'Basic realm="nbtool"'},
-            )
+            if path.startswith("/api/"):
+                return self._json({"error": "需要登录", "login_required": True}, 401)
+            # 浏览器直接访问页面时跳登录页，而不是弹 Basic 认证框
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
             return
         try:
             if path == "/api/state" and method == "GET":
@@ -468,8 +531,26 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------- 静态文件 ----------
 
+    def _login(self):
+        body = self._body()
+        user = (body.get("user") or "").strip()
+        password = body.get("password") or ""
+        if not self.app.password:
+            return self._json({"ok": True, "auth": False})
+        if not self._password_ok(user, password):
+            time.sleep(0.3)  # 拖慢暴力试密码
+            return self._json({"error": "用户名或密码不对"}, 401)
+        token = self.app.create_session()
+        cookie = f"{self.SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={self.app.session_ttl}"
+        return self._json({"ok": True}, 200, extra={"Set-Cookie": cookie})
+
+    def _logout(self):
+        self.app.drop_session(self._session_token())
+        cookie = f"{self.SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+        return self._json({"ok": True}, 200, extra={"Set-Cookie": cookie})
+
     def _static(self, path: str):
-        rel = "index.html" if path in ("/", "") else path.lstrip("/")
+        rel = {"/": "index.html", "": "index.html", "/login": "login.html"}.get(path, path.lstrip("/"))
         if rel.startswith("static/"):
             rel = rel[len("static/") :]
         target = (STATIC_DIR / rel).resolve()

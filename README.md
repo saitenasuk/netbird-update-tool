@@ -42,7 +42,9 @@ docker compose ps
 curl -s http://127.0.0.1:8770/healthz     # {"ok": true}
 ```
 
-打开 `http://<主机>:8770`，用户名 `admin`，密码就是 compose 里那行 `NB_COM_PASSWORD`。
+浏览器打开 `http://<主机>:8770`，会跳到登录页。用户名 `admin`，密码就是 compose 里那行 `NB_COM_PASSWORD`。
+
+登录后拿到一个 12 小时有效的会话 cookie；右上角「退出」可以立即失效。没设 `NB_COM_PASSWORD` 时不显示登录页（仅本机调试用）。
 
 镜像在 GHCR 上是公开的，不需要登录。升级版本：
 
@@ -197,6 +199,7 @@ python3 -m unittest discover tests  # 单测（不需要机器）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| POST | `/api/login` / `/api/logout` | 登录拿会话 cookie / 退出 |
 | GET | `/api/state` | 机器 + 密钥 + 任务 + 当前任务 |
 | GET/POST | `/api/hosts` | 列表 / 新增 |
 | PUT/DELETE | `/api/hosts/{id}` | 修改 / 删除 |

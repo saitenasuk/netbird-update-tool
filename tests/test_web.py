@@ -210,6 +210,69 @@ class WebTest(unittest.TestCase):
         finally:
             self.jobs.active().finish("aborted", None)
 
+    # ---------- 登录页 ----------
+
+    def _raw(self, method, path, body=None, cookie=None):
+        """不跟随跳转，方便断言 302 和 Set-Cookie。"""
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+
+        opener = urllib.request.build_opener(NoRedirect)
+        url = f"http://127.0.0.1:{self.port}{path}"
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Content-Type", "application/json")
+        if cookie:
+            req.add_header("Cookie", cookie)
+        try:
+            with opener.open(req, timeout=10) as res:
+                return res.status, dict(res.headers), res.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, dict(exc.headers), exc.read().decode()
+
+    def test_login_page_is_public(self):
+        status, _, html = self._raw("GET", "/login")
+        self.assertEqual(status, 200)
+        self.assertIn("登录", html)
+        # 登录页依赖的静态资源也要放行
+        self.assertEqual(self._raw("GET", "/style.css")[0], 200)
+        self.assertEqual(self._raw("GET", "/login.js")[0], 200)
+
+    def test_index_redirects_to_login(self):
+        status, headers, _ = self._raw("GET", "/")
+        self.assertEqual(status, 302)
+        self.assertEqual(headers.get("Location"), "/login")
+
+    def test_api_returns_login_required(self):
+        status, _, body = self._raw("GET", "/api/state")
+        self.assertEqual(status, 401)
+        self.assertTrue(json.loads(body)["login_required"])
+
+    def test_login_sets_cookie_and_works(self):
+        status, headers, _ = self._raw(
+            "POST", "/api/login", {"user": "admin", "password": PASSWORD}
+        )
+        self.assertEqual(status, 200)
+        cookie = headers.get("Set-Cookie", "")
+        self.assertIn("nbtool_session=", cookie)
+        self.assertIn("HttpOnly", cookie)
+        token = cookie.split(";")[0]
+        status, _, _ = self._raw("GET", "/api/state", cookie=token)
+        self.assertEqual(status, 200)
+
+    def test_wrong_password_rejected(self):
+        status, _, body = self._raw("POST", "/api/login", {"user": "admin", "password": "nope"})
+        self.assertEqual(status, 401)
+        self.assertIn("不对", json.loads(body)["error"])
+
+    def test_logout_invalidates_session(self):
+        _, headers, _ = self._raw("POST", "/api/login", {"user": "admin", "password": PASSWORD})
+        token = headers["Set-Cookie"].split(";")[0]
+        self.assertEqual(self._raw("GET", "/api/state", cookie=token)[0], 200)
+        self.assertEqual(self._raw("POST", "/api/logout", cookie=token)[0], 200)
+        self.assertEqual(self._raw("GET", "/api/state", cookie=token)[0], 401, "登出后旧 cookie 应失效")
+
     def test_static_index_served(self):
         status, text = self.request("GET", "/")
         self.assertEqual(status, 200)

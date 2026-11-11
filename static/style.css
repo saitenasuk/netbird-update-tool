@@ -1448,3 +1448,77 @@ input[type="number"]::-webkit-inner-spin-button {
 .script-row .segmented {
   align-self: flex-start;
 }
+
+/* ---------- 登录页 ---------- */
+
+.login-body {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--s-6) 0;
+}
+
+.login-wrap {
+  width: min(380px, calc(100vw - 32px));
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-8) var(--s-6) var(--s-6);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--ring), var(--shadow-pop);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.login-brand h1 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.login-brand p {
+  margin-top: 2px;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.login-label {
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.login-submit {
+  justify-content: center;
+  height: 38px;
+  margin-top: var(--s-2);
+}
+
+.login-error {
+  font-size: var(--fs-sm);
+  color: var(--danger-400);
+}
+
+.login-note {
+  margin-top: var(--s-4);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.login-note code {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}

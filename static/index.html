@@ -17,6 +17,7 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-logout" hidden>退出</button>
         <button class="btn btn-primary" id="btn-update-all">全部更新</button>
       </div>
     </header>
@@ -70,6 +71,7 @@
           <h2 id="job-title">当前任务</h2>
           <span class="spacer"></span>
           <span class="chip chip-muted" id="job-status"><i class="chip-dot"></i>空闲</span>
+          <button class="btn btn-ghost btn-icon btn-sm" id="btn-clear-log" title="清空日志面板" disabled>×</button>
         </div>
 
         <div class="job-progress" id="job-progress" hidden>
