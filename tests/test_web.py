@@ -231,6 +231,17 @@ class WebTest(unittest.TestCase):
         except urllib.error.HTTPError as exc:
             return exc.code, dict(exc.headers), exc.read().decode()
 
+    def _head(self, path):
+        """HEAD 请求：只拿状态和类型，不把二进制响应体当 UTF-8 解码。"""
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}{path}", method="HEAD"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as res:
+                return res.status, res.headers.get("Content-Type")
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.headers.get("Content-Type")
+
     def test_login_page_is_public(self):
         status, _, html = self._raw("GET", "/login")
         self.assertEqual(status, 200)
@@ -238,6 +249,9 @@ class WebTest(unittest.TestCase):
         # 登录页依赖的静态资源也要放行
         self.assertEqual(self._raw("GET", "/style.css")[0], 200)
         self.assertEqual(self._raw("GET", "/login.js")[0], 200)
+        # 登录页的品牌图与站点图标也必须公开，否则浏览器会拿到 401
+        self.assertEqual(self._head("/brand/logo-128.png"), (200, "image/png"))
+        self.assertEqual(self._head("/favicon.ico")[0], 200)
 
     def test_index_redirects_to_login(self):
         status, headers, _ = self._raw("GET", "/")

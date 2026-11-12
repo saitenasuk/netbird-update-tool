@@ -316,8 +316,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self._route("GET")
 
-    # 登录页要用的静态资源，未登录也能拿
-    PUBLIC_PATHS = {"/login", "/login.js", "/style.css", "/healthz"}
+    # 登录页要用的静态资源，未登录也能拿；品牌图统一放在 /brand/ 下
+    PUBLIC_PATHS = {"/login", "/login.js", "/style.css", "/healthz", "/favicon.ico"}
 
     def _route(self, method: str):
         path = urlparse(self.path).path
@@ -328,7 +328,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._login()
         if path == "/api/logout" and method == "POST":
             return self._logout()
-        if path in self.PUBLIC_PATHS and method == "GET":
+        if method == "GET" and (
+            path in self.PUBLIC_PATHS or path.startswith("/brand/")
+        ):
             return self._static(path)
 
         try:

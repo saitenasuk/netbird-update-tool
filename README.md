@@ -1,6 +1,10 @@
-# NetBird 更新台
+<p align="center">
+  <img src="static/brand/logo-256.png" width="112" height="112" alt="NetBird 更新台 logo" />
+</p>
 
-用一个网页，把散落在各台 Linux 机器上已有的更新脚本按顺序跑掉，日志实时回来看。不用再逐台 SSH 上去执行。
+<h1 align="center">NetBird 更新台</h1>
+
+<p align="center">用一个网页，把散落在各台 Linux 机器上已有的更新脚本按顺序跑掉，日志实时回来看。<br />不用再逐台 SSH 上去执行。</p>
 
 - **只做编排**：脚本已经在目标机上，工具只负责触发、排序、盯日志、对比版本；升级逻辑全在你的脚本里
 - **零第三方依赖**：Python 3.11+ 标准库 + 系统 `ssh`，一个容器跑起来

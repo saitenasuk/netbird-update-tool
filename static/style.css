@@ -178,21 +178,14 @@ p {
 }
 
 .brand-mark {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   flex: none;
-  border-radius: var(--r-sm);
-  background: linear-gradient(150deg, var(--primary-400), var(--primary-700));
-  box-shadow: var(--ring);
-  position: relative;
-}
-
-.brand-mark::after {
-  content: "";
-  position: absolute;
-  inset: 8px;
-  border: 1.5px solid rgba(255, 255, 255, 0.82);
-  border-radius: 2px;
+  display: block;
+  object-fit: contain;
+  /* 图形本身带 19.5% 圆角与暗底；这里只补一圈描边，让暗色页面上边界更清楚 */
+  border-radius: 19.5%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 2px 6px -2px rgba(0, 0, 0, 0.7);
 }
 
 .brand h1 {
@@ -942,6 +935,11 @@ body[data-drawer="open"] .drawer {
     gap: var(--s-3);
   }
 
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
   .brand-sub {
     display: none;
   }
@@ -1478,6 +1476,11 @@ input[type="number"]::-webkit-inner-spin-button {
   align-items: center;
   gap: var(--s-3);
   margin-bottom: var(--s-2);
+}
+
+.login-brand .brand-mark {
+  width: 44px;
+  height: 44px;
 }
 
 .login-brand h1 {
